@@ -41,6 +41,31 @@ Pick your preferred show windows and enter your email for notifications.
 
 ![Timeslots](docs/screenshots/05-timeslots-and-submit.png)
 
+### Active Trackers
+Once submitted, trackers appear below the form. Each card shows the movie, city, date, cinemas, timeslots, and live status. An active tracker has **Check** (trigger on-demand), **Pause**, and **Delete** buttons.
+
+![Active Trackers](docs/screenshots/06-active-trackers.png)
+
+### Tracker Actions
+Use **Check** to trigger an on-demand scrape, **Pause** to temporarily stop automatic checks, or the trash icon to delete.
+
+![Tracker Actions](docs/screenshots/07-tracker-actions.png)
+
+### Paused Tracker
+A paused tracker shows a blue "Paused" badge and a **Resume** button. Automatic cron checks skip paused trackers.
+
+![Paused Tracker](docs/screenshots/08-tracker-paused.png)
+
+### Delete Confirmation
+Deleting a tracker shows a confirmation dialog to prevent accidental removal.
+
+![Delete Confirmation](docs/screenshots/09-delete-confirm.png)
+
+### Tickets Found
+When tickets are detected, the card turns green with a "Tickets Found!" badge and shows direct **BookMyShow** and **District** booking links.
+
+![Tickets Found](docs/screenshots/10-tickets-found.png)
+
 ---
 
 ## Setup
