@@ -460,7 +460,7 @@ export function TrackerForm({ onCreated }: TrackerFormProps) {
                 Preferred Timeslots
               </Label>
               <p className="mt-1 text-sm text-muted-foreground/80">
-                Keep all four if you're flexible, or narrow it down to the show window you want.
+                Keep all four if you&apos;re flexible, or narrow it down to the show window you want.
               </p>
             </div>
 

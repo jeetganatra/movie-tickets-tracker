@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { trackers, checkResults } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { sendEmail } from "@/lib/email/sender";
 import { buildTicketFoundEmail } from "@/lib/email/templates";
@@ -25,7 +25,9 @@ export async function GET(request: NextRequest) {
     const activeTrackers = await db
       .select()
       .from(trackers)
-      .where(eq(trackers.status, "active"));
+      .where(eq(trackers.status, "active"))
+      .orderBy(asc(trackers.lastCheckedAt), asc(trackers.createdAt))
+      .limit(20);
 
     if (activeTrackers.length === 0) {
       return NextResponse.json({ message: "No active trackers", checked: 0 });
@@ -38,10 +40,8 @@ export async function GET(request: NextRequest) {
       error?: string;
     }[] = [];
 
-    // Process trackers with staggered delays (max 20 per cycle)
-    const toProcess = activeTrackers.slice(0, 20);
-
-    for (const t of toProcess) {
+    // Process the stalest trackers first (max 20 per cycle)
+    for (const t of activeTrackers) {
       // Check if date has passed
       const preferredDate = new Date(t.preferredDate + "T23:59:59");
       if (preferredDate < new Date()) {
@@ -118,8 +118,13 @@ export async function GET(request: NextRequest) {
           if (emailSent) {
             updateData.status = "found";
             updateData.notifiedAt = now;
+          } else {
+            updateData.lastError = (errors ? errors + "; " : "") + "Email send failed";
           }
         }
+
+        const trackerError =
+          typeof updateData.lastError === "string" ? updateData.lastError : undefined;
 
         await db
           .update(trackers)
@@ -130,7 +135,7 @@ export async function GET(request: NextRequest) {
           trackerId: t.id,
           movieName: t.movieName,
           found: ticketsFound,
-          error: errors || undefined,
+          error: trackerError,
         });
       } catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error);

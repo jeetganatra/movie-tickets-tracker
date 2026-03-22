@@ -1,13 +1,5 @@
 import { createStealthContext, randomDelay } from "../src/lib/scrapers/browser";
 
-function normalize(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 async function main() {
   const citySlug = process.argv[2] || "hyderabad";
   const movieName = process.argv[3] || "Project Hail Mary";

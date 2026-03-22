@@ -1,20 +1,6 @@
 import { createContext, randomDelay } from "./browser";
 import type { ShowtimeResult, ShowInfo } from "./types";
 
-function normalizeForMatch(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function fuzzyMatch(movieName: string, target: string): boolean {
-  const a = normalizeForMatch(movieName);
-  const b = normalizeForMatch(target);
-  return a.includes(b) || b.includes(a);
-}
-
 /**
  * Strategy:
  * 1. Go to District city movie listing page

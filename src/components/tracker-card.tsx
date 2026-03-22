@@ -77,6 +77,19 @@ export function TrackerCard({ tracker, onUpdate, index }: TrackerCardProps) {
       timeslot
   );
 
+  async function readErrorMessage(response: Response): Promise<string> {
+    try {
+      const data = (await response.json()) as { error?: string };
+      if (data?.error) {
+        return data.error;
+      }
+    } catch {
+      // Ignore JSON parsing failures and fall back to status text below.
+    }
+
+    return response.statusText || "Request failed";
+  }
+
   async function handleCheckNow() {
     setCheckLoading(true);
     try {
@@ -85,7 +98,15 @@ export function TrackerCard({ tracker, onUpdate, index }: TrackerCardProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ trackerId: tracker.id }),
       });
-      const data = await res.json();
+      const data = (await res.json()) as {
+        error?: string;
+        bms?: { found?: boolean };
+        district?: { found?: boolean };
+      };
+
+      if (!res.ok) {
+        throw new Error(data.error || res.statusText || "Check failed");
+      }
 
       if (data.bms?.found || data.district?.found) {
         toast.success("Tickets found!", {
@@ -108,11 +129,16 @@ export function TrackerCard({ tracker, onUpdate, index }: TrackerCardProps) {
     setActionLoading(true);
     try {
       const newStatus = isPaused ? "active" : "paused";
-      await fetch(`/api/trackers/${tracker.id}`, {
+      const res = await fetch(`/api/trackers/${tracker.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
+
+      if (!res.ok) {
+        throw new Error(await readErrorMessage(res));
+      }
+
       toast.success(
         isPaused ? "Tracker resumed" : "Tracker paused"
       );
@@ -127,7 +153,12 @@ export function TrackerCard({ tracker, onUpdate, index }: TrackerCardProps) {
   async function handleDelete() {
     setActionLoading(true);
     try {
-      await fetch(`/api/trackers/${tracker.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/trackers/${tracker.id}`, { method: "DELETE" });
+
+      if (!res.ok) {
+        throw new Error(await readErrorMessage(res));
+      }
+
       toast.success("Tracker deleted");
       setDeleteDialogOpen(false);
       onUpdate();

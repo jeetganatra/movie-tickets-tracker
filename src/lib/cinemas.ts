@@ -435,10 +435,14 @@ export async function fetchCityCinemas(city: CityInfo): Promise<{
     errors,
   };
 
-  cinemaCache.set(cacheKey, {
-    expiresAt: Date.now() + CACHE_TTL_MS,
-    value,
-  });
+  if (errors.length === 0) {
+    cinemaCache.set(cacheKey, {
+      expiresAt: Date.now() + CACHE_TTL_MS,
+      value,
+    });
+  } else {
+    cinemaCache.delete(cacheKey);
+  }
 
   return value;
 }

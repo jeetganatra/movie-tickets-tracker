@@ -109,8 +109,6 @@ function extractShowtimesFromBodyText(
 
   for (let index = 0; index < lines.length; index += 1) {
     const current = lines[index];
-    const next = lines[index + 1] || "";
-
     if (stopMarkers.some((marker) => current.startsWith(marker))) {
       break;
     }
@@ -265,7 +263,6 @@ export async function checkBookMyShow(
         console.log("[BMS] Movie not found");
         return { platform: "bookmyshow", found: false, shows: [] };
       }
-      movieMatch!; // just for flow, we'll use searchResult below
 
       const buySlug =
         searchResult.slug ||
