@@ -1,36 +1,451 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MovieTracker
 
-## Getting Started
+> **Note:** This entire app was solely vibecoded using [Claude](https://claude.ai) and [Codex](https://openai.com/index/introducing-codex/). No manual code was written — every line of code, every scraper, every UI component was generated through AI pair programming.
 
-First, run the development server:
+MovieTracker is a local-first movie ticket availability tracker for India. It scrapes **BookMyShow** and **District** on a schedule and emails you when matching shows appear for your exact cinema and time preferences.
+
+This is not a generic movie database app. It is a scraper-backed alerting tool aimed at catching ticket openings for specific movie/date/cinema combinations.
+
+---
+
+# Part 1: Usage Guide
+
+## What It Does
+
+- Track any movie across **14 Indian cities**
+- Select **exact cinemas** from live venue lists scraped from BookMyShow and District
+- Choose **preferred time windows**: Morning, Afternoon, Evening, Night
+- Get **email notifications** the moment matching tickets open
+- **Pause, resume, manually check**, or delete trackers from the UI
+- Runs checks every few minutes automatically via a built-in cron scheduler
+
+## Screenshots
+
+### Home Page
+The main interface with the tracker form and your active trackers below.
+
+![Home Page](docs/screenshots/01-home-page.png)
+
+### City Selection
+Choose from 14 supported cities — Mumbai, Delhi-NCR, Bengaluru, Hyderabad, Chennai, Kolkata, Pune, Ahmedabad, Jaipur, Lucknow, Chandigarh, Kochi, Goa, Indore.
+
+![City Dropdown](docs/screenshots/03-city-dropdown.png)
+
+### Cinema Selection
+After selecting a city, the app scrapes both BookMyShow and District to load real cinema names. Select the exact venues you want to track.
+
+![Cinema Selection](docs/screenshots/04-mumbai-cinemas.png)
+
+### Timeslots & Submit
+Pick your preferred show windows and enter your email for notifications.
+
+![Timeslots](docs/screenshots/05-timeslots-and-submit.png)
+
+---
+
+## Setup
+
+### Prerequisites
+
+- **Node.js 20+** and npm
+- **Google Chrome installed locally** (recommended — the BookMyShow scraper uses system Chrome to bypass Cloudflare bot detection)
+- **A Gmail account** with an App Password (see below)
+
+### Step 1: Clone and install
+
+```bash
+git clone <repo-url>
+cd movietracker
+npm install
+```
+
+If Playwright browsers are missing, install them:
+
+```bash
+npx playwright install chromium
+```
+
+### Step 2: Configure environment variables
+
+```bash
+cp .env.example .env.local
+```
+
+Edit `.env.local` with your values:
+
+```env
+GMAIL_USER=your-email@gmail.com
+GMAIL_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
+CRON_SECRET=any-random-string-you-choose
+DATABASE_URL=./data/movietracker.db
+CHECK_INTERVAL_MINUTES=5
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
+
+### Step 3: Setting Up Gmail Credentials
+
+MovieTracker uses Gmail to send email notifications when tickets are found. You need to create a **Gmail App Password** (your regular Gmail password will not work).
+
+#### 3a. Enable 2-Step Verification
+
+1. Go to [Google Account Security](https://myaccount.google.com/security)
+2. Under "How you sign in to Google", click **2-Step Verification**
+3. Follow the prompts to enable it (if not already enabled)
+
+#### 3b. Generate an App Password
+
+1. Go to [App Passwords](https://myaccount.google.com/apppasswords)
+   - If you don't see this option, make sure 2-Step Verification is enabled first
+2. Enter a name like `MovieTracker`
+3. Click **Create**
+4. Google will show you a **16-character password** (e.g., `abcd efgh ijkl mnop`)
+5. Copy this password — you won't be able to see it again
+
+#### 3c. Add to your `.env.local`
+
+```env
+GMAIL_USER=your-email@gmail.com
+GMAIL_APP_PASSWORD=abcdefghijklmnop
+```
+
+> **Important:** Use the app password without spaces. If Google shows `abcd efgh ijkl mnop`, enter it as `abcdefghijklmnop`.
+
+### Step 4: Start the app
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+This starts both the Next.js dev server and the cron scheduler. Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## How to Use
 
-## Learn More
+### Creating a Tracker
 
-To learn more about Next.js, take a look at the following resources:
+1. **Movie Name** — Enter the exact movie name as it appears on BookMyShow (e.g., "Pushpa 2", "Drishyam 3")
+2. **City** — Select from the dropdown. This loads live cinema names from both platforms.
+3. **Preferred Date** — Pick the date you want to watch (must be today or later)
+4. **Exact Cinemas** — Wait for cinemas to load (~10-25 seconds), then select one or more venues. Cinemas are tagged by platform (BookMyShow / District).
+5. **Preferred Timeslots** — Select one or more: Morning (6AM-12PM), Afternoon (12PM-5PM), Evening (5PM-9PM), Night (9PM-6AM). All four are selected by default.
+6. **Notification Email** — Enter the email where you want to receive alerts
+7. Click **START TRACKING**
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Managing Trackers
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **Check Now** — Manually trigger a check for a specific tracker
+- **Pause / Resume** — Temporarily stop or restart checking
+- **Delete** — Remove a tracker and all its check history
+- The tracker list auto-refreshes every 30 seconds
 
-## Deploy on Vercel
+### How Notifications Work
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- The cron scheduler checks all active trackers every `CHECK_INTERVAL_MINUTES` (default: 5)
+- When matching shows are found, you get **one email** with all available showtimes
+- After a successful notification, the tracker status changes to `found` and stops checking
+- If the email fails to send, the tracker stays active and retries next cycle
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
+
+## Available npm Scripts
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Starts Next.js server + cron scheduler together |
+| `npm run dev:web` | Starts only the Next.js server |
+| `npm run dev:cron` | Starts only the cron scheduler |
+| `npm run build` | Builds the Next.js app for production |
+| `npm run start` | Starts production server + cron together |
+| `npm run lint` | Runs ESLint |
+
+---
+
+## Troubleshooting
+
+### Cinema list doesn't load
+
+- Make sure Google Chrome is installed on your machine
+- Run `npx playwright install chromium` if you haven't already
+- BookMyShow may be temporarily blocking — try again in a few minutes
+
+### No emails are being sent
+
+- Verify `GMAIL_USER` and `GMAIL_APP_PASSWORD` in `.env.local`
+- Make sure you're using an **App Password**, not your regular Gmail password
+- Check that 2-Step Verification is enabled on your Google account
+- Look at the terminal logs for email errors
+
+### Manual BookMyShow test
+
+Test the scraper directly from the command line:
+
+```bash
+node --import tsx scripts/run-bms-check.ts "Movie Name" hyderabad 2026-03-27
+```
+
+---
+---
+
+# Part 2: Architecture & Design
+
+> This section covers the internal design of MovieTracker for developers who want to understand or extend the codebase.
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Framework | Next.js 16 (App Router) |
+| UI | React 19, Tailwind CSS 4, shadcn/ui, Radix UI |
+| State | SWR (30s polling), React hooks |
+| Database | SQLite via better-sqlite3 + Drizzle ORM |
+| Scraping | Playwright (system Chrome + bundled Chromium) |
+| Scheduling | node-cron (standalone process) |
+| Email | Nodemailer (Gmail SMTP) |
+| Language | TypeScript (strict mode) |
+
+## Architecture Overview
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                         MovieTracker Architecture                        │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌─────────────────┐     HTTP      ┌─────────────────────────────────┐  │
+│  │   Frontend       │ ──────────▶  │   API Routes (Next.js)          │  │
+│  │                  │              │                                  │  │
+│  │  page.tsx (SPA)  │  ◀──────────  │  /api/cities                   │  │
+│  │  tracker-form    │     JSON     │  /api/cinemas                   │  │
+│  │  tracker-list    │              │  /api/trackers    /api/check    │  │
+│  │  tracker-card    │              │  /api/trackers/[id]             │  │
+│  │                  │              │  /api/cron  ◀─── Cron Runner    │  │
+│  │  shadcn/ui       │              │                                  │  │
+│  │  Sonner toasts   │              │  tracker-check.ts (orchestrator)│  │
+│  │  SWR polling     │              │  preferences.ts (filter logic)  │  │
+│  └─────────────────┘              └────────┬──────────┬──────────────┘  │
+│                                            │          │                  │
+│                                     ┌──────┘          └──────┐          │
+│                                     ▼                        ▼          │
+│                           ┌─────────────────┐    ┌──────────────────┐   │
+│                           │    SQLite DB     │    │   Scrapers       │   │
+│                           │                  │    │                  │   │
+│                           │  trackers        │    │  BookMyShow      │   │
+│                           │  check_results   │    │  (system Chrome) │   │
+│                           │                  │    │                  │   │
+│                           │  Drizzle ORM     │    │  District        │   │
+│                           │  WAL mode        │    │  (Chromium)      │   │
+│                           └─────────────────┘    └────────┬─────────┘   │
+│                                                           │              │
+│  ┌─────────────────┐                              ┌───────┴──────────┐  │
+│  │  Cron Scheduler  │  ──── GET /api/cron ────▶   │  External Sites  │  │
+│  │  node-cron       │  every N minutes             │  bookmyshow.com  │  │
+│  │  start-cron.ts   │                              │  district.in     │  │
+│  └─────────────────┘                              └──────────────────┘  │
+│                                                                          │
+│  ┌─────────────────┐                                                    │
+│  │  Email Service   │  ◀── triggered when tickets found                 │
+│  │  Nodemailer      │                                                    │
+│  │  Gmail SMTP      │  ──▶ HTML email with showtimes + booking links    │
+│  └─────────────────┘                                                    │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+## Data Flow
+
+### Creating a Tracker
+
+```
+User fills form
+    │
+    ▼
+Select city ──▶ GET /api/cinemas ──▶ Playwright scrapes BMS + District
+    │                                       │
+    ▼                                       ▼
+Select cinemas ◀──────────────────── Returns cinema list (30-min cache)
+    │
+    ▼
+Submit ──▶ POST /api/trackers ──▶ Validate & store in SQLite
+    │
+    ▼
+Tracker appears in list (SWR auto-refresh)
+```
+
+### Checking for Tickets
+
+```
+Cron fires (every N min)
+    │
+    ▼
+GET /api/cron (Bearer auth)
+    │
+    ▼
+Load active trackers (max 20 per cycle)
+    │
+    ├──▶ BMS Scraper ──▶ Navigate to movie page ──▶ Extract showtimes
+    │
+    ├──▶ District Scraper ──▶ Navigate to movie page ──▶ Extract showtimes
+    │
+    ▼
+Apply preference filters (cinema + timeslot matching)
+    │
+    ├── No match ──▶ Store result, continue checking
+    │
+    └── Match found ──▶ Build HTML email
+                            │
+                            ▼
+                       Send via Gmail
+                            │
+                            ├── Success ──▶ Status = "found", set notifiedAt
+                            └── Failure ──▶ Stay active, retry next cycle
+```
+
+## Directory Structure
+
+```
+src/
+├── app/
+│   ├── page.tsx                    # Main SPA page
+│   ├── layout.tsx                  # Root layout (fonts, theme, toasts)
+│   ├── globals.css                 # Tailwind styles
+│   └── api/
+│       ├── cities/route.ts         # GET — supported cities
+│       ├── cinemas/route.ts        # GET — scrape cinema names for a city
+│       ├── trackers/route.ts       # GET/POST — list and create trackers
+│       ├── trackers/[id]/route.ts  # GET/PATCH/DELETE — single tracker ops
+│       ├── check/route.ts          # POST — manual check for one tracker
+│       └── cron/route.ts           # GET — scheduled batch check
+│
+├── components/
+│   ├── tracker-form.tsx            # Create tracker form with cinema loading
+│   ├── tracker-list.tsx            # Auto-refreshing tracker list (SWR)
+│   ├── tracker-card.tsx            # Tracker card with actions
+│   ├── header.tsx                  # App header/branding
+│   ├── empty-state.tsx             # Empty state UI
+│   ├── status-badge.tsx            # Color-coded status badge
+│   └── ui/                         # shadcn/ui primitives (11 components)
+│
+├── lib/
+│   ├── cities.ts                   # City config (14 cities, BMS/District slugs)
+│   ├── cinemas.ts                  # Cinema scraper + 30-min in-memory cache
+│   ├── preferences.ts              # Timeslot/cinema filtering logic
+│   ├── tracker-check.ts            # Orchestrates parallel BMS + District checks
+│   ├── utils.ts                    # Utility functions
+│   ├── db/
+│   │   ├── index.ts                # SQLite init (WAL mode, foreign keys)
+│   │   └── schema.ts              # Drizzle schema (trackers, check_results)
+│   ├── email/
+│   │   ├── sender.ts               # Gmail transport via Nodemailer
+│   │   └── templates.ts            # HTML email template for notifications
+│   └── scrapers/
+│       ├── types.ts                # ShowInfo, ShowtimeResult types
+│       ├── browser.ts              # Playwright context (stealth + regular)
+│       ├── bookmyshow.ts           # BMS scraper (~1000 lines)
+│       └── district.ts             # District scraper (~340 lines)
+│
+└── types/
+    └── index.ts                    # TypeScript interfaces
+
+scripts/
+├── start-cron.ts                   # Standalone cron process runner
+├── run-bms-check.ts                # CLI helper for testing BMS scraper
+└── inspect-bms-*.ts                # Debugging scripts for BMS selectors
+```
+
+## Database Schema
+
+Two tables managed by Drizzle ORM:
+
+### `trackers`
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | TEXT (PK) | UUID |
+| `movieName` | TEXT | Movie name to search for |
+| `city` | TEXT | Display city name |
+| `preferredDate` | TEXT | YYYY-MM-DD |
+| `email` | TEXT | Notification email |
+| `status` | TEXT | `active` / `found` / `expired` / `paused` / `error` |
+| `bmsRegionCode` | TEXT | BMS region code (e.g., "MUMBAI") |
+| `bmsSlug` | TEXT | BMS URL slug (e.g., "mumbai") |
+| `districtCitySlug` | TEXT | District URL slug (e.g., "delhi-ncr") |
+| `preferredCinemas` | TEXT | JSON array of `CinemaSelection` |
+| `preferredTimeslots` | TEXT | JSON array of timeslot strings |
+| `lastCheckedAt` | TEXT | Last check timestamp |
+| `checkCount` | INTEGER | Number of checks performed |
+| `notifiedAt` | TEXT | When email was sent (null = not yet notified) |
+| `createdAt` | TEXT | Creation timestamp |
+| `updatedAt` | TEXT | Last update timestamp |
+
+### `check_results`
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | TEXT (PK) | UUID |
+| `trackerId` | TEXT (FK) | References trackers.id (cascade delete) |
+| `platform` | TEXT | `bookmyshow` or `district` |
+| `found` | INTEGER | 1 = tickets found, 0 = not found |
+| `rawData` | TEXT | JSON stringified ShowInfo[] |
+| `errorMessage` | TEXT | Error message if scraping failed |
+| `checkedAt` | TEXT | Check timestamp |
+
+## Scraper Design
+
+### BookMyShow Scraper
+
+The BMS scraper is the most complex part (~1000 lines). Key design decisions:
+
+1. **System Chrome first** — Uses `channel: "chrome"` in Playwright to launch the user's installed Chrome, which bypasses Cloudflare bot detection. Falls back to bundled Chromium with stealth flags if Chrome is unavailable.
+
+2. **Stealth context** — `createStealthContext()` in `browser.ts` adds anti-automation flags, hides `navigator.webdriver`, rotates User-Agent strings, and sets Indian locale/timezone.
+
+3. **DOM extraction** — BMS uses a ReactVirtualized grid. The scraper finds theaters via `<a href*="cinemas">` links and showtimes via regex matching on leaf `<div>` elements.
+
+4. **Format detection** — Automatically detects DOLBY, IMAX, ATMOS, 4DX, and other premium formats from page text.
+
+5. **Retry logic** — Falls back to search-based movie finding if direct URL navigation fails.
+
+### District Scraper
+
+Simpler (~340 lines). Uses bundled Chromium (no Cloudflare issues). Has three extraction strategies with a fallback chain:
+1. Cinema links (`<a href*="/CD">`)
+2. `<li>` element text parsing
+3. Full body text pattern matching
+
+### Timeslot Mapping
+
+| Timeslot | Hours |
+|---|---|
+| Morning | 6:00 AM – 11:59 AM |
+| Afternoon | 12:00 PM – 4:59 PM |
+| Evening | 5:00 PM – 8:59 PM |
+| Night | 9:00 PM – 5:59 AM |
+
+## Cron System
+
+The cron runner (`scripts/start-cron.ts`) is a standalone Node.js process that:
+
+1. Reads `.env.local` manually (it's not a Next.js process)
+2. Uses `node-cron` to schedule calls every `CHECK_INTERVAL_MINUTES`
+3. Calls `GET /api/cron` with Bearer auth
+4. The API handles all logic — the cron process is just a trigger
+
+**Limits:** Max 20 trackers per cycle, 3-second delay between trackers.
+
+## Caveats
+
+1. **`DATABASE_URL` is ignored** — The database path is hardcoded to `data/movietracker.db` in `src/lib/db/index.ts`.
+
+2. **`.env.local` is the only reliable env file** — The cron process reads `.env.local` directly. Other env files may work for Next.js but not for the cron runner.
+
+3. **BookMyShow blocking** — Cloudflare may block the scraper even with system Chrome. The code logs these failures explicitly.
+
+4. **Cinema selection is required** — You must select at least one cinema. There is no "any cinema in the city" mode.
+
+5. **First-hit notifications only** — Each tracker sends at most one email. After that, it becomes `found` and stops checking. If email fails, it retries next cycle.
+
+6. **20 tracker limit per cron cycle** — To prevent resource exhaustion, the cron endpoint processes at most 20 active trackers per run.
+
+---
+
+*Built with AI, for movie lovers who refuse to miss opening day.*
