@@ -32,7 +32,7 @@ Choose from 14 supported cities — Mumbai, Delhi-NCR, Bengaluru, Hyderabad, Che
 ![City Dropdown](docs/screenshots/03-city-dropdown.png)
 
 ### Cinema Selection
-After selecting a city, the app scrapes both BookMyShow and District to load real cinema names. Select the exact venues you want to track.
+After selecting a city, the app scrapes both BookMyShow and District to load real cinema names. Select the exact venues you want to track — here showing 135 venues loaded for Hyderabad.
 
 ![Cinema Selection](docs/screenshots/04-mumbai-cinemas.png)
 
@@ -54,8 +54,8 @@ Pick your preferred show windows and enter your email for notifications.
 ### Step 1: Clone and install
 
 ```bash
-git clone <repo-url>
-cd movietracker
+git clone https://github.com/jeetganatra/movie-tickets-tracker.git
+cd movie-tickets-tracker
 npm install
 ```
 
