@@ -172,7 +172,7 @@ export function TrackerCard({ tracker, onUpdate, index }: TrackerCardProps) {
   return (
     <>
       <Card
-        className={`card-spotlight animate-fade-in-up relative overflow-hidden border-border/50 bg-card/80 opacity-0 backdrop-blur-sm transition-all stagger-${Math.min(index + 1, 5)} ${
+        className={`card-spotlight animate-fade-in-up relative overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm transition-all stagger-${Math.min(index + 1, 5)} ${
           isFound
             ? "animate-glow-pulse border-emerald-500/20"
             : isActive
