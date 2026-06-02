@@ -1,15 +1,48 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { trackers } from "@/lib/db/schema";
+import { checkResults, trackers } from "@/lib/db/schema";
 import { getCityByName } from "@/lib/cities";
 import {
   normalizeTracker,
   sanitizeCinemaSelections,
   sanitizePreferredTimeslots,
 } from "@/lib/preferences";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
-import type { CinemaSelection, PreferredTimeslot } from "@/types";
+import type { CinemaSelection, PreferredTimeslot, ShowInfo } from "@/types";
+
+function parseShows(rawData: string | null): ShowInfo[] {
+  if (!rawData) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(rawData);
+    return Array.isArray(parsed) ? (parsed as ShowInfo[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function dedupeShows(shows: ShowInfo[]): ShowInfo[] {
+  const seen = new Set<string>();
+
+  return shows.filter((show) => {
+    const key = [
+      show.theaterName.toLowerCase(),
+      show.showtime.toUpperCase(),
+      show.format.toLowerCase(),
+      show.bookingUrl || "",
+    ].join("::");
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+}
 
 export async function GET() {
   const allTrackers = await db
@@ -17,8 +50,29 @@ export async function GET() {
     .from(trackers)
     .orderBy(desc(trackers.createdAt));
 
+  const trackersWithShows = await Promise.all(
+    allTrackers.map(async (tracker) => {
+      const latestFoundResults = await db
+        .select()
+        .from(checkResults)
+        .where(eq(checkResults.trackerId, tracker.id))
+        .orderBy(desc(checkResults.checkedAt))
+        .limit(10);
+      const latestShows = dedupeShows(
+        latestFoundResults
+          .filter((result) => result.found === 1)
+          .flatMap((result) => parseShows(result.rawData))
+      );
+
+      return {
+        ...normalizeTracker(tracker),
+        latestShows,
+      };
+    })
+  );
+
   return NextResponse.json({
-    trackers: allTrackers.map((tracker) => normalizeTracker(tracker)),
+    trackers: trackersWithShows,
   });
 }
 

@@ -71,6 +71,7 @@ export function TrackerCard({ tracker, onUpdate, index }: TrackerCardProps) {
   const isFound = tracker.status === "found";
   const isActive = tracker.status === "active";
   const isPaused = tracker.status === "paused";
+  const latestShows = tracker.latestShows || [];
   const timeslotLabels = tracker.preferredTimeslots.map(
     (timeslot) =>
       TIMESLOT_OPTIONS.find((option) => option.value === timeslot)?.label ||
@@ -308,33 +309,80 @@ export function TrackerCard({ tracker, onUpdate, index }: TrackerCardProps) {
 
               {/* Found state: show booking links */}
               {isFound && (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <a
-                    href={`https://in.bookmyshow.com/explore/movies-${tracker.bmsSlug}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <Button
-                      size="sm"
-                      className="gap-1.5 bg-gradient-to-r from-amber-600 to-amber-500 text-xs font-semibold text-black hover:from-amber-500 hover:to-amber-400"
+                <div className="mt-4 space-y-3">
+                  {latestShows.length > 0 && (
+                    <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 p-3">
+                      <p className="mb-2 text-[11px] uppercase tracking-[0.25em] text-emerald-200/70">
+                        Found Shows
+                      </p>
+                      <div className="space-y-2">
+                        {latestShows.map((show) => (
+                          <div
+                            key={`${show.theaterName}-${show.showtime}-${show.format}-${show.bookingUrl}`}
+                            className="flex flex-col gap-2 rounded-md border border-border/40 bg-background/40 p-2 sm:flex-row sm:items-center sm:justify-between"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-foreground">
+                                {show.theaterName}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {show.showtime}
+                                {show.format ? ` · ${show.format}` : ""}
+                              </p>
+                            </div>
+                            {show.bookingUrl && (
+                              <a
+                                href={show.bookingUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="shrink-0"
+                              >
+                                <Button
+                                  size="sm"
+                                  className="h-8 gap-1.5 bg-gradient-to-r from-amber-600 to-amber-500 text-xs font-semibold text-black hover:from-amber-500 hover:to-amber-400"
+                                >
+                                  Book
+                                  <ExternalLink className="h-3 w-3" />
+                                </Button>
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-2">
+                    <a
+                      href={
+                        latestShows.find((show) => show.bookingUrl)?.bookingUrl ||
+                        `https://in.bookmyshow.com/explore/movies-${tracker.bmsSlug}`
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
                     >
-                      BookMyShow
-                      <ExternalLink className="h-3 w-3" />
-                    </Button>
-                  </a>
-                  <a
-                    href={`https://www.district.in/movies/${tracker.districtCitySlug}-movie-tickets`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <Button
-                      size="sm"
-                      className="gap-1.5 bg-gradient-to-r from-violet-600 to-violet-500 text-xs font-semibold text-white hover:from-violet-500 hover:to-violet-400"
+                      <Button
+                        size="sm"
+                        className="gap-1.5 bg-gradient-to-r from-amber-600 to-amber-500 text-xs font-semibold text-black hover:from-amber-500 hover:to-amber-400"
+                      >
+                        BookMyShow
+                        <ExternalLink className="h-3 w-3" />
+                      </Button>
+                    </a>
+                    <a
+                      href={`https://www.district.in/movies/${tracker.districtCitySlug}-movie-tickets`}
+                      target="_blank"
+                      rel="noopener noreferrer"
                     >
-                      District
-                      <ExternalLink className="h-3 w-3" />
-                    </Button>
-                  </a>
+                      <Button
+                        size="sm"
+                        className="gap-1.5 bg-gradient-to-r from-violet-600 to-violet-500 text-xs font-semibold text-white hover:from-violet-500 hover:to-violet-400"
+                      >
+                        District
+                        <ExternalLink className="h-3 w-3" />
+                      </Button>
+                    </a>
+                  </div>
                 </div>
               )}
             </div>

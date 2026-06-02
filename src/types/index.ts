@@ -31,6 +31,7 @@ export interface Tracker {
   notifiedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  latestShows?: ShowInfo[];
 }
 
 export interface CheckResult {

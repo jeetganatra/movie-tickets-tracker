@@ -58,6 +58,26 @@ function filterShowsForRequestedDate(
   });
 }
 
+function requestedDateToDisplayKey(date: string): string {
+  const parsed = new Date(`${date}T00:00:00+05:30`);
+
+  return parsed
+    .toLocaleDateString("en-IN", {
+      weekday: "short",
+      day: "2-digit",
+      month: "short",
+    })
+    .toUpperCase()
+    .replace(/,/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function requestedDateKeyToDisplayKey(dateKey: string): string {
+  return requestedDateToDisplayKey(
+    `${dateKey.slice(0, 4)}-${dateKey.slice(4, 6)}-${dateKey.slice(6, 8)}`
+  );
+}
+
 function containsPreferredCinema(
   shows: ShowInfo[],
   preferredCinemaNames: string[]
@@ -335,6 +355,215 @@ export async function checkBookMyShow(
   }
 }
 
+export async function checkBookMyShowCinemaPage(
+  movieName: string,
+  theaterName: string,
+  sourceUrl: string,
+  date: string
+): Promise<ShowtimeResult> {
+  const context = await createStealthContext();
+
+  try {
+    const page = await context.newPage();
+    const dateFormatted = date.replace(/-/g, "");
+    const cinemaUrl = sourceUrl
+      .replace(/\/20\d{6}(?=\/?$)/, "")
+      .replace(/\/$/, "");
+    const datedUrl = `${cinemaUrl}/${dateFormatted}`;
+
+    console.log(`[BMS] Loading cinema page: ${datedUrl}`);
+
+    await page.goto(datedUrl, {
+      waitUntil: "load",
+      timeout: 30000,
+    });
+    await randomDelay(1500, 2500);
+
+    const title = await page.title();
+    if (title.includes("Cloudflare") || title.includes("Attention")) {
+      return {
+        platform: "bookmyshow",
+        found: false,
+        shows: [],
+        error: "Blocked by Cloudflare on cinema page",
+      };
+    }
+
+    const bodyText = await page.evaluate(() => document.body.innerText || "");
+    const selectedDateKey = await getSelectedBmsDateKey(page);
+    const requestedDateKey = requestedDateToDisplayKey(date);
+
+    if (!selectedDateKey || selectedDateKey !== requestedDateKey) {
+      console.log(
+        `[BMS] Cinema page selected ${selectedDateKey || "unknown"}, expected ${requestedDateKey}`
+      );
+      return {
+        platform: "bookmyshow",
+        found: false,
+        shows: [],
+      };
+    }
+
+    const shows = extractMovieShowsFromCinemaPageText(
+      bodyText,
+      movieName,
+      theaterName,
+      datedUrl
+    );
+
+    return {
+      platform: "bookmyshow",
+      found: shows.length > 0,
+      shows,
+    };
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error(`[BMS] Cinema page scraping error: ${errMsg}`);
+    return {
+      platform: "bookmyshow",
+      found: false,
+      shows: [],
+      error: errMsg,
+    };
+  } finally {
+    await context.close();
+  }
+}
+
+async function getSelectedBmsDateKey(
+  page: import("playwright").Page
+): Promise<string | null> {
+  return page.evaluate(() => {
+    const dayPattern = /^(MON|TUE|WED|THU|FRI|SAT|SUN)\s+(\d{2})\s+([A-Z]{3})$/i;
+
+    const candidates = Array.from(document.querySelectorAll("*"))
+      .map((element) => {
+        const htmlElement = element as HTMLElement;
+        const text = (htmlElement.innerText || htmlElement.textContent || "")
+          .replace(/\s+/g, " ")
+          .trim();
+        const style = window.getComputedStyle(htmlElement);
+        const rect = htmlElement.getBoundingClientRect();
+        const match = text.match(dayPattern);
+        const background = style.backgroundColor.match(/\d+/g)?.map(Number) || [];
+        const looksSelected =
+          background.length >= 3 &&
+          background[0] >= 220 &&
+          background[1] <= 120 &&
+          background[2] <= 150;
+
+        return {
+          match,
+          visible:
+            style.display !== "none" &&
+            style.visibility !== "hidden" &&
+            rect.width > 0 &&
+            rect.height > 0,
+          looksSelected,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+        };
+      })
+      .filter(
+        (entry) =>
+          entry.match &&
+          entry.visible &&
+          entry.looksSelected &&
+          entry.top >= 80 &&
+          entry.top <= 360 &&
+          entry.width <= 160 &&
+          entry.height <= 120
+      );
+
+    const selected = candidates[0]?.match;
+    return selected
+      ? `${selected[1].toUpperCase()} ${selected[2]} ${selected[3].toUpperCase()}`
+      : null;
+  });
+}
+
+function extractMovieShowsFromCinemaPageText(
+  bodyText: string,
+  movieName: string,
+  theaterName: string,
+  bookingUrl: string
+): ShowInfo[] {
+  const lines = bodyText
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  const searchNorm = normalizeForMatch(movieName);
+  const isTime = (value: string) => /^\d{1,2}:\d{2}\s*(AM|PM)$/i.test(value);
+  const isFormat = (value: string) =>
+    /^(DOLBY|ATMOS|BARCO|LASER|IMAX|4DX|ICE|MX4D|SCREENX|PCX|LED|2D|3D)/i.test(
+      value
+    );
+  const isLanguageLine = (value: string) =>
+    /^(English|Hindi|Telugu|Tamil|Malayalam|Kannada|Marathi|Punjabi|Bengali)\b/i.test(
+      value
+    );
+  const isNoise = (value: string) =>
+    /^(available|fast filling|select price range|select show timings|subtitles language|details|home|cinemas in|movies now showing|top cinemas|top cinemas chains|movies by|upcoming movies|countries|help|bookmyshow exclusives)$/i.test(
+      value
+    );
+  const isMovieBoundary = (value: string, nextValue: string) =>
+    value.length >= 2 &&
+    value.length <= 100 &&
+    !isTime(value) &&
+    !isFormat(value) &&
+    !isLanguageLine(value) &&
+    !isNoise(value) &&
+    isLanguageLine(nextValue);
+
+  const startIndex = lines.findIndex((line) => {
+    const lineNorm = normalizeForMatch(line.replace(/\([^)]*\)/g, ""));
+    return lineNorm.includes(searchNorm) || searchNorm.includes(lineNorm);
+  });
+
+  if (startIndex === -1) {
+    return [];
+  }
+
+  const shows: ShowInfo[] = [];
+  let currentFormat = "";
+
+  for (let index = startIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    const nextLine = lines[index + 1] || "";
+
+    if (isMovieBoundary(line, nextLine)) {
+      break;
+    }
+
+    if (isLanguageLine(line)) {
+      currentFormat = line.split(",").slice(1).join(",").trim();
+      continue;
+    }
+
+    if (isFormat(line)) {
+      currentFormat = line;
+      continue;
+    }
+
+    if (!isTime(line)) {
+      continue;
+    }
+
+    const nextFormat = isFormat(nextLine) ? nextLine : currentFormat || "2D";
+    shows.push({
+      theaterName,
+      showtime: line,
+      format: nextFormat,
+      language: "",
+      availabilityStatus: "Available",
+      bookingUrl,
+    });
+  }
+
+  return dedupeShows(shows);
+}
+
 async function trySearch(
   page: import("playwright").Page,
   movieName: string
@@ -450,6 +679,15 @@ async function extractShowtimes(
       console.log("[BMS] No shows available for this date");
       return { platform: "bookmyshow", found: false, shows: [] };
     }
+  }
+
+  const selectedDateKey = await getSelectedBmsDateKey(page);
+  const expectedDateKey = requestedDateKeyToDisplayKey(requestedDateKey);
+  if (!selectedDateKey || selectedDateKey !== expectedDateKey) {
+    console.log(
+      `[BMS] Showtime page selected ${selectedDateKey || "unknown"}, expected ${expectedDateKey}`
+    );
+    return { platform: "bookmyshow", found: false, shows: [] };
   }
 
   const shows = await page.evaluate(() => {
