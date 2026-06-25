@@ -24,16 +24,38 @@ try {
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 const CRON_SECRET = process.env.CRON_SECRET || "";
-const INTERVAL = process.env.CHECK_INTERVAL_MINUTES || "5";
+const parsedInterval = Number(process.env.CHECK_INTERVAL_MINUTES || "5");
+const parsedRequestTimeoutMs = Number(
+  process.env.CRON_REQUEST_TIMEOUT_MS || "240000"
+);
+const INTERVAL =
+  Number.isFinite(parsedInterval) && parsedInterval > 0 ? parsedInterval : 5;
+const REQUEST_TIMEOUT_MS =
+  Number.isFinite(parsedRequestTimeoutMs) && parsedRequestTimeoutMs > 0
+    ? parsedRequestTimeoutMs
+    : 240000;
+let isRunning = false;
 
 console.log(`[Cron] Starting scheduler - checking every ${INTERVAL} minutes`);
 console.log(`[Cron] App URL: ${APP_URL}`);
 console.log(`[Cron] Secret configured: ${CRON_SECRET ? "yes" : "no"}`);
+console.log(`[Cron] Request timeout: ${REQUEST_TIMEOUT_MS}ms`);
 
 // Run every N minutes
 cron.schedule(`*/${INTERVAL} * * * *`, async () => {
   const timestamp = new Date().toISOString();
+
+  if (isRunning) {
+    console.warn(`[Cron] ${timestamp} - Previous check still running; skipping this tick`);
+    return;
+  }
+
+  isRunning = true;
   console.log(`[Cron] ${timestamp} - Running ticket check...`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, REQUEST_TIMEOUT_MS);
 
   try {
     const response = await fetch(`${APP_URL}/api/cron`, {
@@ -41,6 +63,7 @@ cron.schedule(`*/${INTERVAL} * * * *`, async () => {
       headers: {
         Authorization: `Bearer ${CRON_SECRET}`,
       },
+      signal: controller.signal,
     });
 
     if (!response.ok) {
@@ -61,7 +84,16 @@ cron.schedule(`*/${INTERVAL} * * * *`, async () => {
       }
     }
   } catch (error) {
-    console.error(`[Cron] Failed to call API:`, error);
+    if (error instanceof Error && error.name === "AbortError") {
+      console.error(
+        `[Cron] ${timestamp} - API call timed out after ${REQUEST_TIMEOUT_MS}ms`
+      );
+    } else {
+      console.error(`[Cron] Failed to call API:`, error);
+    }
+  } finally {
+    clearTimeout(timeout);
+    isRunning = false;
   }
 });
 

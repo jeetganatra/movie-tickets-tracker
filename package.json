@@ -8,7 +8,11 @@
     "dev:cron": "node --import tsx scripts/start-cron.ts",
     "build": "next build",
     "start": "concurrently \"next start\" \"node --import tsx scripts/start-cron.ts\"",
-    "lint": "eslint"
+    "lint": "eslint",
+    "launchd:install": "scripts/install-launchd.sh install",
+    "launchd:restart": "scripts/install-launchd.sh restart",
+    "launchd:status": "scripts/install-launchd.sh status",
+    "launchd:stop": "scripts/install-launchd.sh stop"
   },
   "dependencies": {
     "better-sqlite3": "^12.6.2",
