@@ -137,11 +137,21 @@ GMAIL_APP_PASSWORD=abcdefghijklmnop
 
 ### Step 4: Start the app
 
+For active development:
+
 ```bash
 npm run dev
 ```
 
 This starts both the Next.js dev server and the cron scheduler. Open [http://localhost:3000](http://localhost:3000).
+
+For a macOS background service that survives terminal closes and restarts automatically:
+
+```bash
+npm run launchd:install
+```
+
+This builds the app, installs a user LaunchAgent, and keeps the same web UI available at [http://localhost:3000](http://localhost:3000). See [docs/launchd.md](docs/launchd.md) for status, restart, stop, and log commands.
 
 ---
 
@@ -183,6 +193,10 @@ This starts both the Next.js dev server and the cron scheduler. Open [http://loc
 | `npm run build` | Builds the Next.js app for production |
 | `npm run start` | Starts production server + cron together |
 | `npm run lint` | Runs ESLint |
+| `npm run launchd:install` | Builds and installs the macOS LaunchAgent background service |
+| `npm run launchd:restart` | Rebuilds and restarts the LaunchAgent service |
+| `npm run launchd:status` | Prints LaunchAgent status |
+| `npm run launchd:stop` | Stops the LaunchAgent service |
 
 ---
 
