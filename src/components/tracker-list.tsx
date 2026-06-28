@@ -7,7 +7,14 @@ import { EmptyState } from "./empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Tracker } from "@/types";
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
+const fetcher = async (url: string) => {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(response.statusText || "Request failed");
+  }
+
+  return response.json();
+};
 
 interface TrackerListProps {
   refreshKey: number;

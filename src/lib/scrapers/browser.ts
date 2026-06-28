@@ -1,4 +1,4 @@
-import { chromium, Browser, BrowserContext } from "playwright";
+import { chromium, Browser, BrowserContext, Page } from "playwright";
 
 let browserInstance: Browser | null = null;
 let stealthBrowserInstance: Browser | null = null;
@@ -13,6 +13,37 @@ const USER_AGENTS = [
 
 export function getRandomUserAgent(): string {
   return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+}
+
+function patchPageEvaluate(page: Page): void {
+  const originalEvaluate = page.evaluate.bind(page);
+
+  page.evaluate = ((pageFunction: unknown, arg?: unknown) => {
+    if (typeof pageFunction !== "function") {
+      return originalEvaluate(pageFunction as never, arg as never);
+    }
+
+    const serializedArg = JSON.stringify(arg);
+    const argExpression =
+      typeof serializedArg === "undefined" ? "undefined" : serializedArg;
+    const source = pageFunction.toString();
+
+    return originalEvaluate(`(async () => {
+      const __name = (target) => target;
+      const fn = ${source};
+      return await fn(${argExpression});
+    })()`);
+  }) as Page["evaluate"];
+}
+
+function patchContextPages(context: BrowserContext): void {
+  const originalNewPage = context.newPage.bind(context);
+
+  context.newPage = (async (...args: Parameters<BrowserContext["newPage"]>) => {
+    const page = await originalNewPage(...args);
+    patchPageEvaluate(page);
+    return page;
+  }) as BrowserContext["newPage"];
 }
 
 export async function getBrowser(): Promise<Browser> {
@@ -73,12 +104,23 @@ async function getStealthBrowser(): Promise<Browser> {
 
 export async function createContext(): Promise<BrowserContext> {
   const browser = await getBrowser();
-  return browser.newContext({
+  const context = await browser.newContext({
     userAgent: getRandomUserAgent(),
     viewport: { width: 1920, height: 1080 },
     locale: "en-IN",
     timezoneId: "Asia/Kolkata",
   });
+
+  await context.addInitScript(() => {
+    Object.defineProperty(window, "__name", {
+      configurable: true,
+      value: <T>(target: T) => target,
+    });
+  });
+
+  patchContextPages(context);
+
+  return context;
 }
 
 /**
@@ -98,6 +140,11 @@ export async function createStealthContext(): Promise<BrowserContext> {
   });
 
   await context.addInitScript(() => {
+    Object.defineProperty(window, "__name", {
+      configurable: true,
+      value: <T>(target: T) => target,
+    });
+
     Object.defineProperty(navigator, "webdriver", {
       get: () => undefined,
     });
@@ -106,6 +153,8 @@ export async function createStealthContext(): Promise<BrowserContext> {
       get: () => ["en-IN", "en-GB", "en-US", "en"],
     });
   });
+
+  patchContextPages(context);
 
   return context;
 }

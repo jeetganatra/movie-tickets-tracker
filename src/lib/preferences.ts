@@ -83,6 +83,21 @@ export function sanitizePreferredTimeslots(
   return [...new Set(timeslots)].filter((timeslot) => valid.has(timeslot));
 }
 
+export function sanitizePreferredFormats(formats: string[]): string[] {
+  const seen = new Set<string>();
+
+  return formats
+    .map((format) => normalizeWhitespace(format).toUpperCase())
+    .filter((format) => {
+      if (!format || format.length > 80 || seen.has(format)) {
+        return false;
+      }
+
+      seen.add(format);
+      return true;
+    });
+}
+
 function parsePreferredCinemas(value: string | null | undefined): CinemaSelection[] {
   const parsed = safeParseJson<CinemaSelection[]>(value, []);
   return sanitizeCinemaSelections(
@@ -101,8 +116,13 @@ function parsePreferredTimeslots(
   );
 }
 
+function parsePreferredFormats(value: string | null | undefined): string[] {
+  return sanitizePreferredFormats(safeParseJson<string[]>(value, []));
+}
+
 type TrackerRowLike = {
   id: string;
+  userId?: string | null;
   movieName: string;
   city: string;
   preferredDate: string;
@@ -113,6 +133,7 @@ type TrackerRowLike = {
   districtCitySlug: string;
   preferredCinemas?: string | null;
   preferredTimeslots?: string | null;
+  preferredFormats?: string | null;
   lastCheckedAt: string | null;
   lastError: string | null;
   checkCount: number;
@@ -122,6 +143,8 @@ type TrackerRowLike = {
 };
 
 export function normalizeTracker(row: TrackerRowLike): Tracker {
+  const { userId: ownerId, ...publicRow } = row;
+  void ownerId;
   const cityInfo = getCityByName(row.city);
   const status = ["active", "found", "expired", "paused", "error"].includes(
     row.status
@@ -130,11 +153,12 @@ export function normalizeTracker(row: TrackerRowLike): Tracker {
     : "active";
 
   return {
-    ...row,
+    ...publicRow,
     status,
     bmsSlug: row.bmsSlug || cityInfo?.bmsSlug || row.bmsRegionCode.toLowerCase(),
     preferredCinemas: parsePreferredCinemas(row.preferredCinemas),
     preferredTimeslots: parsePreferredTimeslots(row.preferredTimeslots),
+    preferredFormats: parsePreferredFormats(row.preferredFormats),
   };
 }
 
@@ -202,29 +226,48 @@ function matchesTimeslotPreference(
   return timeslot ? preferredTimeslots.includes(timeslot) : false;
 }
 
+function matchesFormatPreference(
+  show: ShowInfo,
+  preferredFormats: string[]
+): boolean {
+  if (preferredFormats.length === 0) {
+    return true;
+  }
+
+  const haystack = normalizeWhitespace(
+    [show.format, show.availabilityStatus].filter(Boolean).join(" ")
+  ).toUpperCase();
+
+  return preferredFormats.some((format) => haystack.includes(format));
+}
+
 export function filterShowsForPreferences(
   platform: PlatformName,
   shows: ShowInfo[],
   preferredCinemas: CinemaSelection[],
-  preferredTimeslots: PreferredTimeslot[]
+  preferredTimeslots: PreferredTimeslot[],
+  preferredFormats: string[] = []
 ): ShowInfo[] {
   return shows.filter(
     (show) =>
       matchesCinemaPreference(show, platform, preferredCinemas) &&
-      matchesTimeslotPreference(show, preferredTimeslots)
+      matchesTimeslotPreference(show, preferredTimeslots) &&
+      matchesFormatPreference(show, preferredFormats)
   );
 }
 
 export function applyPreferencesToResult(
   result: ShowtimeResult,
   preferredCinemas: CinemaSelection[],
-  preferredTimeslots: PreferredTimeslot[]
+  preferredTimeslots: PreferredTimeslot[],
+  preferredFormats: string[] = []
 ): ShowtimeResult {
   const filteredShows = filterShowsForPreferences(
     result.platform,
     result.shows,
     preferredCinemas,
-    preferredTimeslots
+    preferredTimeslots,
+    preferredFormats
   );
 
   return {

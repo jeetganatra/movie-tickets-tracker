@@ -25,6 +25,7 @@ export interface Tracker {
   districtCitySlug: string;
   preferredCinemas: CinemaSelection[];
   preferredTimeslots: PreferredTimeslot[];
+  preferredFormats: string[];
   lastCheckedAt: string | null;
   lastError: string | null;
   checkCount: number;
@@ -72,7 +73,7 @@ export interface CreateTrackerInput {
   movieName: string;
   city: string;
   preferredDate: string;
-  email: string;
   preferredCinemas: CinemaSelection[];
   preferredTimeslots: PreferredTimeslot[];
+  preferredFormats?: string[];
 }

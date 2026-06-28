@@ -18,7 +18,6 @@ import {
   Clapperboard,
   MapPin,
   CalendarDays,
-  Mail,
   Loader2,
   Building2,
   Clock3,
@@ -31,7 +30,7 @@ import type {
   PreferredTimeslot,
 } from "@/types";
 
-const DEFAULT_TIMESLOTS = TIMESLOT_OPTIONS.map((option) => option.value);
+const DEFAULT_TIMESLOTS: PreferredTimeslot[] = [];
 
 const PLATFORM_META = {
   bookmyshow: {
@@ -63,7 +62,6 @@ export function TrackerForm({ onCreated }: TrackerFormProps) {
   const [movieName, setMovieName] = useState("");
   const [city, setCity] = useState("");
   const [preferredDate, setPreferredDate] = useState("");
-  const [email, setEmail] = useState("");
   const [cinemas, setCinemas] = useState<CinemaSelection[]>([]);
   const [selectedCinemaIds, setSelectedCinemaIds] = useState<string[]>([]);
   const [preferredTimeslots, setPreferredTimeslots] =
@@ -176,9 +174,6 @@ export function TrackerForm({ onCreated }: TrackerFormProps) {
     if (!preferredDate) newErrors.preferredDate = "Select a date";
     else if (preferredDate < today)
       newErrors.preferredDate = "Date must be today or later";
-    if (!email.trim()) newErrors.email = "Email is required";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      newErrors.email = "Enter a valid email";
     if (selectedCinemas.length === 0)
       newErrors.preferredCinemas = "Select at least one exact cinema";
     if (preferredTimeslots.length === 0)
@@ -201,7 +196,6 @@ export function TrackerForm({ onCreated }: TrackerFormProps) {
           movieName: movieName.trim(),
           city,
           preferredDate,
-          email: email.trim(),
           preferredCinemas: selectedCinemas,
           preferredTimeslots,
         }),
@@ -220,7 +214,6 @@ export function TrackerForm({ onCreated }: TrackerFormProps) {
       setMovieName("");
       setCity("");
       setPreferredDate("");
-      setEmail("");
       setCinemas([]);
       setSelectedCinemaIds([]);
       setPreferredTimeslots(DEFAULT_TIMESLOTS);
@@ -460,7 +453,7 @@ export function TrackerForm({ onCreated }: TrackerFormProps) {
                 Preferred Timeslots
               </Label>
               <p className="mt-1 text-sm text-muted-foreground/80">
-                Keep all four if you&apos;re flexible, or narrow it down to the show window you want.
+                Pick one or more show windows you want to track.
               </p>
             </div>
 
@@ -495,27 +488,6 @@ export function TrackerForm({ onCreated }: TrackerFormProps) {
               <p className="text-xs text-destructive">
                 {errors.preferredTimeslots}
               </p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label
-              htmlFor="email"
-              className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground"
-            >
-              <Mail className="h-3.5 w-3.5" />
-              Notification Email
-            </Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="your@email.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="border-border/50 bg-background/50 placeholder:text-muted-foreground/40 focus:border-amber-500/40"
-            />
-            {errors.email && (
-              <p className="text-xs text-destructive">{errors.email}</p>
             )}
           </div>
 

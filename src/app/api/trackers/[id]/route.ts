@@ -1,19 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { trackers, checkResults } from "@/lib/db/schema";
+import { getAuthenticatedUser } from "@/lib/auth-user";
 import { normalizeTracker } from "@/lib/preferences";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const user = await getAuthenticatedUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const tracker = await db
     .select()
     .from(trackers)
-    .where(eq(trackers.id, id))
+    .where(and(eq(trackers.id, id), eq(trackers.userId, user.id)))
     .limit(1);
 
   if (tracker.length === 0) {
@@ -28,7 +33,7 @@ export async function GET(
     .limit(20);
 
   return NextResponse.json({
-    tracker: normalizeTracker(tracker[0]),
+    tracker: { ...normalizeTracker(tracker[0]), email: user.email },
     checkResults: results,
   });
 }
@@ -38,6 +43,11 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const user = await getAuthenticatedUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = await request.json();
   const { status } = body;
 
@@ -52,7 +62,7 @@ export async function PATCH(
   const existing = await db
     .select()
     .from(trackers)
-    .where(eq(trackers.id, id))
+    .where(and(eq(trackers.id, id), eq(trackers.userId, user.id)))
     .limit(1);
 
   if (existing.length === 0) {
@@ -62,15 +72,17 @@ export async function PATCH(
   await db
     .update(trackers)
     .set({ status, updatedAt: new Date().toISOString() })
-    .where(eq(trackers.id, id));
+    .where(and(eq(trackers.id, id), eq(trackers.userId, user.id)));
 
   const updated = await db
     .select()
     .from(trackers)
-    .where(eq(trackers.id, id))
+    .where(and(eq(trackers.id, id), eq(trackers.userId, user.id)))
     .limit(1);
 
-  return NextResponse.json({ tracker: normalizeTracker(updated[0]) });
+  return NextResponse.json({
+    tracker: { ...normalizeTracker(updated[0]), email: user.email },
+  });
 }
 
 export async function DELETE(
@@ -78,11 +90,15 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const user = await getAuthenticatedUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const existing = await db
     .select()
     .from(trackers)
-    .where(eq(trackers.id, id))
+    .where(and(eq(trackers.id, id), eq(trackers.userId, user.id)))
     .limit(1);
 
   if (existing.length === 0) {
@@ -91,7 +107,9 @@ export async function DELETE(
 
   // Delete check results first, then tracker
   await db.delete(checkResults).where(eq(checkResults.trackerId, id));
-  await db.delete(trackers).where(eq(trackers.id, id));
+  await db
+    .delete(trackers)
+    .where(and(eq(trackers.id, id), eq(trackers.userId, user.id)));
 
   return NextResponse.json({ success: true });
 }

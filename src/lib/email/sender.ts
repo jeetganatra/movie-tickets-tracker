@@ -1,6 +1,28 @@
 import nodemailer from "nodemailer";
+import { execFileSync } from "node:child_process";
 
 let transporter: nodemailer.Transporter | null = null;
+
+function getGmailAppPassword(): string {
+  if (process.env.GMAIL_APP_PASSWORD) {
+    return process.env.GMAIL_APP_PASSWORD;
+  }
+
+  const user = process.env.GMAIL_USER;
+  const service = process.env.GMAIL_KEYCHAIN_SERVICE;
+
+  if (!user || !service) {
+    throw new Error(
+      "Set GMAIL_USER and either GMAIL_APP_PASSWORD or GMAIL_KEYCHAIN_SERVICE"
+    );
+  }
+
+  return execFileSync(
+    "/usr/bin/security",
+    ["find-generic-password", "-a", user, "-s", service, "-w"],
+    { encoding: "utf8" }
+  ).trim();
+}
 
 function getTransporter(): nodemailer.Transporter {
   if (!transporter) {
@@ -8,7 +30,7 @@ function getTransporter(): nodemailer.Transporter {
       service: "gmail",
       auth: {
         user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD,
+        pass: getGmailAppPassword(),
       },
     });
   }

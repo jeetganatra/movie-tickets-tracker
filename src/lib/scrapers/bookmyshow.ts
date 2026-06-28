@@ -4,7 +4,7 @@ import type { ShowtimeResult, ShowInfo } from "./types";
 const LANGUAGE_FILTER_REGEX =
   /^(English|Hindi|Telugu|Tamil|Malayalam|Kannada|Marathi|Punjabi|Bengali)(\s*-\s*.+)?$/i;
 const FORMAT_KEYWORD_REGEX =
-  /\b(DOLBY|IMAX|ATMOS|4DX|ICE|MX4D|SCREENX|PCX|3D|2D|LASER)\b/i;
+  /\b(DOLBY|IMAX|ATMOS|BARCO|4DX|ICE|MX4D|SCREENX|PCX|3D|2D|4K|LASER)\b/i;
 
 function normalizeForMatch(s: string): string {
   return s
@@ -109,7 +109,7 @@ function extractShowtimesFromBodyText(
 
   const isTime = (value: string) => /^\d{1,2}:\d{2}\s*(AM|PM)$/i.test(value);
   const isFormat = (value: string) =>
-    /^(ATMOS|DOLBY|IMAX|4DX|ICE|MX4D|SCREENX|PCX|2D|3D|4K|LASER)/i.test(
+    /^(ATMOS|DOLBY|BARCO|IMAX|4DX|ICE|MX4D|SCREENX|PCX|2D|3D|4K|LASER)/i.test(
       value
     );
   const isNoise = (value: string) =>
@@ -728,7 +728,7 @@ async function extractShowtimes(
           text.length >= 3 &&
           text.length <= 80 &&
           !/^\d{1,2}:\d{2}/.test(text) &&
-          !/^(ATMOS|DOLBY|IMAX|4DX|ICE|MX4D)/i.test(text) &&
+          !/^(ATMOS|DOLBY|BARCO|IMAX|4DX|ICE|MX4D|LASER)/i.test(text) &&
           !text.includes("₹") &&
           span.children.length === 0
         ) {
@@ -761,7 +761,7 @@ async function extractShowtimes(
           times.push(text);
         }
         if (
-          /^(ATMOS|DOLBY|IMAX|4DX|ICE|MX4D|SCREENX)/i.test(
+          /^(ATMOS|DOLBY|BARCO|IMAX|4DX|ICE|MX4D|SCREENX|LASER)/i.test(
             text
           ) &&
           el.children.length === 0

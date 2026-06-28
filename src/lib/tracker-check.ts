@@ -80,12 +80,14 @@ export async function runTrackerCheck(row: TrackerRow) {
   const bmsResult = applyPreferencesToResult(
     bmsRawResult,
     tracker.preferredCinemas,
-    tracker.preferredTimeslots
+    tracker.preferredTimeslots,
+    tracker.preferredFormats
   );
   const districtResult = applyPreferencesToResult(
     districtRawResult,
     tracker.preferredCinemas,
-    tracker.preferredTimeslots
+    tracker.preferredTimeslots,
+    tracker.preferredFormats
   );
 
   return {

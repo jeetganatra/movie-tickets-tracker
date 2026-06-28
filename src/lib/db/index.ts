@@ -18,8 +18,45 @@ sqlite.pragma("foreign_keys = ON");
 
 // Create tables if they don't exist
 sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    email TEXT UNIQUE,
+    email_verified INTEGER,
+    image TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS accounts (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    provider_account_id TEXT NOT NULL,
+    refresh_token TEXT,
+    access_token TEXT,
+    expires_at INTEGER,
+    token_type TEXT,
+    scope TEXT,
+    id_token TEXT,
+    session_state TEXT,
+    PRIMARY KEY (provider, provider_account_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    session_token TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS verification_tokens (
+    identifier TEXT NOT NULL,
+    token TEXT NOT NULL,
+    expires INTEGER NOT NULL,
+    PRIMARY KEY (identifier, token)
+  );
+
   CREATE TABLE IF NOT EXISTS trackers (
     id TEXT PRIMARY KEY,
+    user_id TEXT,
     movie_name TEXT NOT NULL,
     city TEXT NOT NULL,
     preferred_date TEXT NOT NULL,
@@ -30,6 +67,7 @@ sqlite.exec(`
     district_city_slug TEXT NOT NULL,
     preferred_cinemas TEXT NOT NULL DEFAULT '[]',
     preferred_timeslots TEXT NOT NULL DEFAULT '[]',
+    preferred_formats TEXT NOT NULL DEFAULT '[]',
     last_checked_at TEXT,
     last_error TEXT,
     check_count INTEGER NOT NULL DEFAULT 0,
@@ -64,5 +102,7 @@ function ensureTrackerColumn(name: string, definition: string) {
 ensureTrackerColumn("bms_slug", "TEXT NOT NULL DEFAULT ''");
 ensureTrackerColumn("preferred_cinemas", "TEXT NOT NULL DEFAULT '[]'");
 ensureTrackerColumn("preferred_timeslots", "TEXT NOT NULL DEFAULT '[]'");
+ensureTrackerColumn("preferred_formats", "TEXT NOT NULL DEFAULT '[]'");
+ensureTrackerColumn("user_id", "TEXT");
 
 export const db = drizzle(sqlite, { schema });

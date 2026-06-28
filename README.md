@@ -75,6 +75,7 @@ When tickets are detected, the card turns green with a "Tickets Found!" badge an
 - **Node.js 20+** and npm
 - **Google Chrome installed locally** (recommended — the BookMyShow scraper uses system Chrome to bypass Cloudflare bot detection)
 - **A Gmail account** with an App Password (see below)
+- **A Google Cloud OAuth client** for local Google sign-in
 
 ### Step 1: Clone and install
 
@@ -100,24 +101,57 @@ Edit `.env.local` with your values:
 
 ```env
 GMAIL_USER=your-email@gmail.com
-GMAIL_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
+GMAIL_KEYCHAIN_SERVICE=MovieTracker-Gmail-App-Password
+AUTH_GOOGLE_ID=your-google-oauth-client-id
+AUTH_KEYCHAIN_ACCOUNT=movie-tickets-tracker
+AUTH_SECRET_KEYCHAIN_SERVICE=MovieTracker-Auth-Secret
+AUTH_GOOGLE_SECRET_KEYCHAIN_SERVICE=MovieTracker-Google-OAuth-Secret
+# Optional. Leave unset to allow any verified Google account to sign in locally.
+# ALLOWED_GOOGLE_EMAILS=you@gmail.com,friend@gmail.com
 CRON_SECRET=any-random-string-you-choose
 DATABASE_URL=./data/movietracker.db
 CHECK_INTERVAL_MINUTES=5
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-### Step 3: Setting Up Gmail Credentials
+### Step 3: Configure Google Login
+
+1. Create or select a project in [Google Cloud Console](https://console.cloud.google.com/).
+2. Configure the OAuth consent screen. For broad local use, choose an
+   **External** audience. If the app stays in testing mode, add each Google
+   account under test users; to let any Google account use the client, publish
+   the OAuth app.
+3. Create an OAuth client with application type **Web application**.
+4. Add this authorized redirect URI:
+
+```text
+http://localhost:3000/api/auth/callback/google
+```
+
+5. Put the client ID in `AUTH_GOOGLE_ID` in `.env.local`.
+6. Store the authentication secrets in macOS Keychain:
+
+```bash
+npm run auth:setup
+```
+
+The setup command generates the Auth.js session secret and securely prompts for
+the Google OAuth client secret. Neither secret is written to the project or
+shell history. By default, any verified Google account can sign in locally, and
+each account gets its own private trackers. To lock a local install down to
+specific accounts, set `ALLOWED_GOOGLE_EMAILS` to a comma-separated allowlist.
+
+### Step 4: Setting Up Gmail Credentials
 
 MovieTracker uses Gmail to send email notifications when tickets are found. You need to create a **Gmail App Password** (your regular Gmail password will not work).
 
-#### 3a. Enable 2-Step Verification
+#### 4a. Enable 2-Step Verification
 
 1. Go to [Google Account Security](https://myaccount.google.com/security)
 2. Under "How you sign in to Google", click **2-Step Verification**
 3. Follow the prompts to enable it (if not already enabled)
 
-#### 3b. Generate an App Password
+#### 4b. Generate an App Password
 
 1. Go to [App Passwords](https://myaccount.google.com/apppasswords)
    - If you don't see this option, make sure 2-Step Verification is enabled first
@@ -126,16 +160,30 @@ MovieTracker uses Gmail to send email notifications when tickets are found. You 
 4. Google will show you a **16-character password** (e.g., `abcd efgh ijkl mnop`)
 5. Copy this password — you won't be able to see it again
 
-#### 3c. Add to your `.env.local`
+#### 4c. Store the App Password in macOS Keychain
+
+Keep only the Gmail address and Keychain service name in `.env.local`:
 
 ```env
 GMAIL_USER=your-email@gmail.com
-GMAIL_APP_PASSWORD=abcdefghijklmnop
+GMAIL_KEYCHAIN_SERVICE=MovieTracker-Gmail-App-Password
 ```
 
-> **Important:** Use the app password without spaces. If Google shows `abcd efgh ijkl mnop`, enter it as `abcdefghijklmnop`.
+Then run this command. It prompts securely for the App Password and does not
+place it in shell history:
 
-### Step 4: Start the app
+```bash
+security add-generic-password -U \
+  -a "your-email@gmail.com" \
+  -s "MovieTracker-Gmail-App-Password" \
+  -w
+```
+
+The app reads the password from Keychain when it sends an alert. For non-macOS
+deployments, `GMAIL_APP_PASSWORD` is still supported as a fallback environment
+variable.
+
+### Step 5: Start the app
 
 ```bash
 npm run dev
@@ -153,9 +201,8 @@ This starts both the Next.js dev server and the cron scheduler. Open [http://loc
 2. **City** — Select from the dropdown. This loads live cinema names from both platforms.
 3. **Preferred Date** — Pick the date you want to watch (must be today or later)
 4. **Exact Cinemas** — Wait for cinemas to load (~10-25 seconds), then select one or more venues. Cinemas are tagged by platform (BookMyShow / District).
-5. **Preferred Timeslots** — Select one or more: Morning (6AM-12PM), Afternoon (12PM-5PM), Evening (5PM-9PM), Night (9PM-6AM). All four are selected by default.
-6. **Notification Email** — Enter the email where you want to receive alerts
-7. Click **START TRACKING**
+5. **Preferred Timeslots** — Select one or more: Morning (6AM-12PM), Afternoon (12PM-5PM), Evening (5PM-9PM), Night (9PM-6AM).
+6. Click **START TRACKING**. Alerts go to the verified signed-in Google email.
 
 ### Managing Trackers
 

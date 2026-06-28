@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchCityCinemas } from "@/lib/cinemas";
 import { getCityByName } from "@/lib/cities";
+import { getAuthenticatedUser } from "@/lib/auth-user";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
+  if (!(await getAuthenticatedUser())) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const city = request.nextUrl.searchParams.get("city");
 
   if (!city) {

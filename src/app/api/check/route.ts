@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { trackers, checkResults } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { trackers, checkResults, users } from "@/lib/db/schema";
+import { getAuthenticatedUser } from "@/lib/auth-user";
+import { and, eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { sendEmail } from "@/lib/email/sender";
 import { buildTicketFoundEmail } from "@/lib/email/templates";
@@ -9,6 +10,11 @@ import { runTrackerCheck } from "@/lib/tracker-check";
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { trackerId } = body;
 
@@ -19,20 +25,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const tracker = await db
-      .select()
+    const trackerRows = await db
+      .select({
+        tracker: trackers,
+        ownerEmail: users.email,
+      })
       .from(trackers)
-      .where(eq(trackers.id, trackerId))
+      .innerJoin(users, eq(trackers.userId, users.id))
+      .where(
+        and(eq(trackers.id, trackerId), eq(trackers.userId, user.id))
+      )
       .limit(1);
 
-    if (tracker.length === 0) {
+    if (trackerRows.length === 0) {
       return NextResponse.json(
         { error: "Tracker not found" },
         { status: 404 }
       );
     }
 
-    const t = tracker[0];
+    const { tracker: t, ownerEmail } = trackerRows[0];
 
     // Check if date has passed
     const preferredDate = new Date(t.preferredDate + "T23:59:59");
@@ -100,7 +112,11 @@ export async function POST(request: NextRequest) {
         districtResult.shows
       );
 
-      const emailSent = await sendEmail(normalizedTracker.email, subject, html);
+      const emailSent = await sendEmail(
+        ownerEmail || normalizedTracker.email,
+        subject,
+        html
+      );
 
       if (emailSent) {
         updateData.status = "found";

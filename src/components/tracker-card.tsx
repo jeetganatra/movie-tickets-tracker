@@ -291,6 +291,24 @@ export function TrackerCard({ tracker, onUpdate, index }: TrackerCardProps) {
                     )}
                   </div>
                 </div>
+
+                {tracker.preferredFormats.length > 0 && (
+                  <div>
+                    <p className="mb-2 text-[11px] uppercase tracking-[0.25em] text-muted-foreground/60">
+                      Preferred Formats
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {tracker.preferredFormats.map((format) => (
+                        <span
+                          key={format}
+                          className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-[11px] text-sky-100"
+                        >
+                          {format}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Error tooltip */}

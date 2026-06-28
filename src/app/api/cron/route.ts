@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { trackers, checkResults } from "@/lib/db/schema";
+import { trackers, checkResults, users } from "@/lib/db/schema";
 import { asc, eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { sendEmail } from "@/lib/email/sender";
@@ -16,15 +16,19 @@ export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
 
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
     // Get all active trackers
     const activeTrackers = await db
-      .select()
+      .select({
+        tracker: trackers,
+        ownerEmail: users.email,
+      })
       .from(trackers)
+      .innerJoin(users, eq(trackers.userId, users.id))
       .where(eq(trackers.status, "active"))
       .orderBy(asc(trackers.lastCheckedAt), asc(trackers.createdAt))
       .limit(20);
@@ -41,7 +45,8 @@ export async function GET(request: NextRequest) {
     }[] = [];
 
     // Process the stalest trackers first (max 20 per cycle)
-    for (const t of activeTrackers) {
+    for (const activeTracker of activeTrackers) {
+      const t = activeTracker.tracker;
       // Check if date has passed
       const preferredDate = new Date(t.preferredDate + "T23:59:59");
       if (preferredDate < new Date()) {
@@ -110,7 +115,7 @@ export async function GET(request: NextRequest) {
           );
 
           const emailSent = await sendEmail(
-            normalizedTracker.email,
+            activeTracker.ownerEmail || normalizedTracker.email,
             subject,
             html
           );

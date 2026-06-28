@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { checkResults, trackers } from "@/lib/db/schema";
+import { getAuthenticatedUser } from "@/lib/auth-user";
 import { getCityByName } from "@/lib/cities";
 import {
   normalizeTracker,
   sanitizeCinemaSelections,
+  sanitizePreferredFormats,
   sanitizePreferredTimeslots,
 } from "@/lib/preferences";
 import { desc, eq } from "drizzle-orm";
@@ -45,9 +47,15 @@ function dedupeShows(shows: ShowInfo[]): ShowInfo[] {
 }
 
 export async function GET() {
+  const user = await getAuthenticatedUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const allTrackers = await db
     .select()
     .from(trackers)
+    .where(eq(trackers.userId, user.id))
     .orderBy(desc(trackers.createdAt));
 
   const trackersWithShows = await Promise.all(
@@ -66,6 +74,7 @@ export async function GET() {
 
       return {
         ...normalizeTracker(tracker),
+        email: user.email,
         latestShows,
       };
     })
@@ -78,14 +87,19 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
     const {
       movieName,
       city,
       preferredDate,
-      email,
       preferredCinemas,
       preferredTimeslots,
+      preferredFormats,
     } = body;
 
     // Validation
@@ -128,13 +142,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!email || typeof email !== "string" || !email.includes("@")) {
-      return NextResponse.json(
-        { error: "Valid email is required" },
-        { status: 400 }
-      );
-    }
-
     const normalizedCinemas = sanitizeCinemaSelections(
       Array.isArray(preferredCinemas)
         ? (preferredCinemas as CinemaSelection[])
@@ -161,19 +168,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const normalizedFormats = sanitizePreferredFormats(
+      Array.isArray(preferredFormats) ? (preferredFormats as string[]) : []
+    );
+
     const now = new Date().toISOString();
     const newTracker = {
       id: uuidv4(),
+      userId: user.id,
       movieName: movieName.trim(),
       city: cityInfo.name,
       preferredDate,
-      email: email.trim().toLowerCase(),
+      email: user.email,
       status: "active",
       bmsRegionCode: cityInfo.bmsCode,
       bmsSlug: cityInfo.bmsSlug,
       districtCitySlug: cityInfo.districtSlug,
       preferredCinemas: JSON.stringify(normalizedCinemas),
       preferredTimeslots: JSON.stringify(normalizedTimeslots),
+      preferredFormats: JSON.stringify(normalizedFormats),
       lastCheckedAt: null,
       lastError: null,
       checkCount: 0,

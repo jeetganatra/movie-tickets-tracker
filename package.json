@@ -3,24 +3,26 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"next dev\" \"node --import tsx scripts/start-cron.ts\"",
-    "dev:web": "next dev",
+    "dev": "node --import tsx scripts/with-keychain-env.ts node --import tsx scripts/start-app.ts dev",
+    "dev:web": "node --import tsx scripts/with-keychain-env.ts next dev",
     "dev:cron": "node --import tsx scripts/start-cron.ts",
-    "build": "next build",
-    "start": "concurrently \"next start\" \"node --import tsx scripts/start-cron.ts\"",
+    "auth:setup": "node --import tsx scripts/setup-auth-keychain.ts",
+    "build": "node --import tsx scripts/with-keychain-env.ts next build",
+    "start": "node --import tsx scripts/with-keychain-env.ts node --import tsx scripts/start-app.ts start",
     "lint": "eslint"
   },
   "dependencies": {
+    "@auth/drizzle-adapter": "^1.11.2",
     "better-sqlite3": "^12.6.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "concurrently": "^9.2.1",
-    "drizzle-orm": "^0.45.1",
+    "drizzle-orm": "^0.45.2",
     "lucide-react": "^0.575.0",
-    "next": "16.1.6",
+    "next": "^16.2.9",
+    "next-auth": "^5.0.0-beta.31",
     "next-themes": "^0.4.6",
     "node-cron": "^4.2.1",
-    "nodemailer": "^8.0.1",
+    "nodemailer": "^7.0.13",
     "playwright": "^1.58.2",
     "radix-ui": "^1.4.3",
     "react": "19.2.3",
@@ -28,7 +30,7 @@
     "sonner": "^2.0.7",
     "swr": "^2.4.0",
     "tailwind-merge": "^3.5.0",
-    "uuid": "^13.0.0"
+    "uuid": "^14.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
