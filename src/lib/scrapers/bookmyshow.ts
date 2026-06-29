@@ -4,7 +4,13 @@ import type { ShowtimeResult, ShowInfo } from "./types";
 const LANGUAGE_FILTER_REGEX =
   /^(English|Hindi|Telugu|Tamil|Malayalam|Kannada|Marathi|Punjabi|Bengali)(\s*-\s*.+)?$/i;
 const FORMAT_KEYWORD_REGEX =
-  /\b(DOLBY|IMAX|ATMOS|4DX|ICE|MX4D|SCREENX|PCX|3D|2D|LASER)\b/i;
+  /\b(HDR|BARCO|DOLBY|IMAX|ATMOS|4DX|ICE|MX4D|SCREENX|PCX|PXL|MACRO|3D|2D|LASER)\b/i;
+
+type BmsMovieMatch = {
+  eventId: string;
+  slug: string;
+  title: string;
+};
 
 function normalizeForMatch(s: string): string {
   return s
@@ -32,6 +38,38 @@ function dedupeShows(shows: ShowInfo[]): ShowInfo[] {
     seen.add(key);
     return true;
   });
+}
+
+function fallbackMovieSlug(movieName: string): string {
+  return movieName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+}
+
+function mergeResults(results: ShowtimeResult[]): ShowtimeResult {
+  return {
+    platform: "bookmyshow",
+    found: results.some((result) => result.found),
+    shows: dedupeShows(results.flatMap((result) => result.shows)),
+    error:
+      results
+        .map((result) => result.error)
+        .filter(Boolean)
+        .join("; ") || undefined,
+  };
+}
+
+function scoreFormatEvent(value: string): number {
+  const normalized = value.toUpperCase();
+  let score = 0;
+
+  if (/\bHDR\b/.test(normalized)) score += 20;
+  if (/\bBARCO\b/.test(normalized)) score += 20;
+  if (/\bDOLBY\b/.test(normalized)) score += 12;
+  if (/\bIMAX\b/.test(normalized)) score += 10;
+  if (/\b4DX\b/.test(normalized)) score += 8;
+  if (/\bPXL\b/.test(normalized)) score += 5;
+  if (/\b2D\b/.test(normalized)) score -= 3;
+
+  return score;
 }
 
 function extractBookingDateKey(url: string | undefined): string | null {
@@ -109,7 +147,7 @@ function extractShowtimesFromBodyText(
 
   const isTime = (value: string) => /^\d{1,2}:\d{2}\s*(AM|PM)$/i.test(value);
   const isFormat = (value: string) =>
-    /^(ATMOS|DOLBY|IMAX|4DX|ICE|MX4D|SCREENX|PCX|2D|3D|4K|LASER)/i.test(
+    /^(HDR|BARCO|ATMOS|DOLBY|IMAX|4DX|ICE|MX4D|SCREENX|PCX|PXL|MACRO|2D|3D|4K|LASER)/i.test(
       value
     );
   const isNoise = (value: string) =>
@@ -207,8 +245,10 @@ export async function checkBookMyShow(
       };
     }
 
-    // Step 2: Find the movie in the listing
-    const movieMatch = await page.evaluate((search: string) => {
+    // Step 2: Find all matching movie/event links in the listing.
+    // BMS can publish multiple event IDs for the same title; the first one
+    // may be stale/no-shows while another has live showtimes.
+    const movieMatches = await page.evaluate((search: string) => {
       const normalize = (s: string) =>
         s
           .toLowerCase()
@@ -216,29 +256,67 @@ export async function checkBookMyShow(
           .replace(/\s+/g, " ")
           .trim();
       const searchNorm = normalize(search);
+      const results: {
+        eventId: string;
+        slug: string;
+        title: string;
+        score: number;
+      }[] = [];
+      const seen = new Set<string>();
 
-      const links = document.querySelectorAll('a[href*="ET00"]');
-      for (const link of links) {
+      const pushMatch = (link: Element, baseScore: number) => {
         const href = (link as HTMLAnchorElement).href;
         const text = link.textContent?.trim() || "";
         const textNorm = normalize(text);
 
-        if (
-          textNorm.includes(searchNorm) ||
-          searchNorm.includes(textNorm)
-        ) {
-          const eventMatch = href.match(/ET\d{8,}/);
-          const slugMatch = href.match(
-            /\/movies\/[^/]+\/([^/]+)\/ET/
-          );
-          if (eventMatch) {
-            return {
-              eventId: eventMatch[0],
-              slug: slugMatch ? slugMatch[1] : "",
-              title: text,
-            };
-          }
+        if (!textNorm || seen.has(href)) {
+          return;
         }
+
+        if (
+          !(
+            textNorm.includes(searchNorm) ||
+            searchNorm.includes(textNorm)
+          )
+        ) {
+          return;
+        }
+
+        const eventMatch = href.match(/ET\d{8,}/);
+        if (!eventMatch) {
+          return;
+        }
+
+        const eventId = eventMatch[0];
+        if (seen.has(eventId)) {
+          return;
+        }
+
+        const slugMatch = href.match(
+          /\/movies\/[^/]+\/([^/]+)\/ET/
+        );
+        const exactScore = textNorm === searchNorm ? 100 : 0;
+        const compactText = textNorm.replace(/\s+/g, "");
+        const compactSearch = searchNorm.replace(/\s+/g, "");
+        const compactScore =
+          compactText.includes(compactSearch) ||
+          compactSearch.includes(compactText)
+            ? 25
+            : 0;
+
+        seen.add(href);
+        seen.add(eventId);
+        results.push({
+          eventId,
+          slug: slugMatch ? slugMatch[1] : "",
+          title: text,
+          score: baseScore + exactScore + compactScore,
+        });
+      };
+
+      const links = document.querySelectorAll('a[href*="ET00"]');
+      for (const link of links) {
+        pushMatch(link, 20);
       }
 
       // Broader search: check all movie links by text
@@ -246,34 +324,18 @@ export async function checkBookMyShow(
         'a[href*="/movies/"]'
       );
       for (const link of allMovieLinks) {
-        const href = (link as HTMLAnchorElement).href;
-        const text = link.textContent?.trim() || "";
-        const textNorm = normalize(text);
-
-        if (
-          text.length > 1 &&
-          text.length < 100 &&
-          (textNorm.includes(searchNorm) ||
-            searchNorm.includes(textNorm))
-        ) {
-          const eventMatch = href.match(/ET\d{8,}/);
-          if (eventMatch) {
-            const slugMatch = href.match(
-              /\/movies\/[^/]+\/([^/]+)\/ET/
-            );
-            return {
-              eventId: eventMatch[0],
-              slug: slugMatch ? slugMatch[1] : "",
-              title: text,
-            };
-          }
-        }
+        pushMatch(link, 0);
       }
 
-      return null;
+      return results
+        .sort((left, right) => right.score - left.score)
+        .slice(0, 6)
+        .map(({ eventId, slug, title }) => ({ eventId, slug, title }));
     }, movieName);
 
-    if (!movieMatch) {
+    let candidates: BmsMovieMatch[] = movieMatches;
+
+    if (candidates.length === 0) {
       // Try search as fallback
       console.log(
         "[BMS] Movie not found in listing, trying search..."
@@ -284,63 +346,105 @@ export async function checkBookMyShow(
         return { platform: "bookmyshow", found: false, shows: [] };
       }
 
-      const buySlug =
-        searchResult.slug ||
-        movieName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-      const buyUrl = `https://in.bookmyshow.com/buytickets/${buySlug}/movie-${normalizedCitySlug}-${searchResult.eventId}-MT/${dateFormatted}`;
-      console.log(`[BMS] Showtimes URL: ${buyUrl}`);
+      candidates = [
+        {
+          eventId: searchResult.eventId,
+          slug: searchResult.slug,
+          title: movieName,
+        },
+      ];
+    }
 
-      await page.goto(buyUrl, {
+    const results: ShowtimeResult[] = [];
+    const maxCandidates = preferredCinemaNames.length > 0 ? 6 : 3;
+    const triedEventIds = new Set<string>();
+
+    const tryCandidate = async (
+      candidate: BmsMovieMatch
+    ): Promise<ShowtimeResult> => {
+      triedEventIds.add(candidate.eventId);
+
+      console.log(
+        `[BMS] Trying: "${candidate.title}" (${candidate.eventId})`
+      );
+
+      // Step 3: Navigate to the buytickets page
+      const movieSlug = candidate.slug || fallbackMovieSlug(movieName);
+      const buyTicketsUrl = `https://in.bookmyshow.com/buytickets/${movieSlug}/movie-${normalizedCitySlug}-${candidate.eventId}-MT/${dateFormatted}`;
+      console.log(`[BMS] Showtimes URL: ${buyTicketsUrl}`);
+
+      await page.goto(buyTicketsUrl, {
         waitUntil: "load",
         timeout: 30000,
       });
       await randomDelay(3000, 5000);
 
-      return await extractShowtimes(
+      // Check if blocked
+      const showTitle = await page.title();
+      if (
+        showTitle.includes("Cloudflare") ||
+        showTitle.includes("Attention")
+      ) {
+        console.log("[BMS] Blocked by Cloudflare on showtimes page");
+        const blockedResult: ShowtimeResult = {
+          platform: "bookmyshow",
+          found: false,
+          shows: [],
+          error: "Blocked by Cloudflare on showtimes page",
+        };
+        results.push(blockedResult);
+        return blockedResult;
+      }
+
+      // Step 4: Extract showtimes
+      const result = await extractShowtimes(
         page,
         preferredCinemaNames,
         dateFormatted
       );
+      results.push(result);
+
+      return result;
+    };
+
+    for (const candidate of candidates.slice(0, maxCandidates)) {
+      if (triedEventIds.has(candidate.eventId)) {
+        continue;
+      }
+
+      const result = await tryCandidate(candidate);
+
+      if (result.found && containsPreferredCinema(result.shows, preferredCinemaNames)) {
+        return result;
+      }
+
+      if (preferredCinemaNames.length === 0) {
+        continue;
+      }
+
+      const movieSlug = candidate.slug || fallbackMovieSlug(movieName);
+      const formatCandidates = await collectFormatEventMatches(
+        page,
+        movieSlug,
+        triedEventIds
+      );
+
+      for (const formatCandidate of formatCandidates) {
+        if (triedEventIds.has(formatCandidate.eventId)) {
+          continue;
+        }
+
+        const formatResult = await tryCandidate(formatCandidate);
+        if (
+          formatResult.found &&
+          containsPreferredCinema(formatResult.shows, preferredCinemaNames)
+        ) {
+          return formatResult;
+        }
+      }
     }
 
-    console.log(
-      `[BMS] Found: "${movieMatch.title}" (${movieMatch.eventId})`
-    );
-
-    // Step 3: Navigate to the buytickets page
-    const movieSlug =
-      movieMatch.slug ||
-      movieName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-    const buyTicketsUrl = `https://in.bookmyshow.com/buytickets/${movieSlug}/movie-${normalizedCitySlug}-${movieMatch.eventId}-MT/${dateFormatted}`;
-    console.log(`[BMS] Showtimes URL: ${buyTicketsUrl}`);
-
-    await page.goto(buyTicketsUrl, {
-      waitUntil: "load",
-      timeout: 30000,
-    });
-    await randomDelay(3000, 5000);
-
-    // Check if blocked
-    const showTitle = await page.title();
-    if (
-      showTitle.includes("Cloudflare") ||
-      showTitle.includes("Attention")
-    ) {
-      console.log("[BMS] Blocked by Cloudflare on showtimes page");
-      return {
-        platform: "bookmyshow",
-        found: false,
-        shows: [],
-        error: "Blocked by Cloudflare on showtimes page",
-      };
-    }
-
-    // Step 4: Extract showtimes
-    return await extractShowtimes(
-      page,
-      preferredCinemaNames,
-      dateFormatted
-    );
+    return mergeResults(results);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     console.error(`[BMS] Scraping error: ${errMsg}`);
@@ -353,6 +457,56 @@ export async function checkBookMyShow(
   } finally {
     await context.close();
   }
+}
+
+async function collectFormatEventMatches(
+  page: import("playwright").Page,
+  slug: string,
+  triedEventIds: Set<string>
+): Promise<BmsMovieMatch[]> {
+  const matches = await page.evaluate(() => {
+    const html = document.documentElement.innerHTML;
+    const results: { eventId: string; title: string }[] = [];
+    const seen = new Set<string>();
+    const pattern =
+      /"type":"chip","title":"([^"]+)","cta":\{"type":"formatSelector","analytics":\{"event_code":"(ET\d{8,})"/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = pattern.exec(html)) && results.length < 12) {
+      const title = match[1]
+        .replace(/&amp;/g, "&")
+        .replace(/\\"/g, '"')
+        .trim();
+      const eventId = match[2];
+
+      if (!seen.has(eventId)) {
+        seen.add(eventId);
+        results.push({ eventId, title });
+      }
+    }
+
+    return results;
+  });
+
+  const candidates = matches
+    .filter((match) => !triedEventIds.has(match.eventId))
+    .sort((left, right) => scoreFormatEvent(right.title) - scoreFormatEvent(left.title))
+    .slice(0, 8)
+    .map((match) => ({
+      eventId: match.eventId,
+      slug,
+      title: `format ${match.title}`,
+    }));
+
+  if (candidates.length > 0) {
+    console.log(
+      `[BMS] Found ${candidates.length} alternate format event(s): ${candidates
+        .map((candidate) => `${candidate.title} (${candidate.eventId})`)
+        .join(", ")}`
+    );
+  }
+
+  return candidates;
 }
 
 export async function checkBookMyShowCinemaPage(
@@ -496,7 +650,7 @@ function extractMovieShowsFromCinemaPageText(
   const searchNorm = normalizeForMatch(movieName);
   const isTime = (value: string) => /^\d{1,2}:\d{2}\s*(AM|PM)$/i.test(value);
   const isFormat = (value: string) =>
-    /^(DOLBY|ATMOS|BARCO|LASER|IMAX|4DX|ICE|MX4D|SCREENX|PCX|LED|2D|3D)/i.test(
+    /^(HDR|DOLBY|ATMOS|BARCO|LASER|IMAX|4DX|ICE|MX4D|SCREENX|PCX|PXL|MACRO|LED|2D|3D)/i.test(
       value
     );
   const isLanguageLine = (value: string) =>
@@ -728,7 +882,7 @@ async function extractShowtimes(
           text.length >= 3 &&
           text.length <= 80 &&
           !/^\d{1,2}:\d{2}/.test(text) &&
-          !/^(ATMOS|DOLBY|IMAX|4DX|ICE|MX4D)/i.test(text) &&
+          !/^(HDR|BARCO|ATMOS|DOLBY|IMAX|4DX|ICE|MX4D|PXL|MACRO)/i.test(text) &&
           !text.includes("₹") &&
           span.children.length === 0
         ) {
@@ -761,7 +915,7 @@ async function extractShowtimes(
           times.push(text);
         }
         if (
-          /^(ATMOS|DOLBY|IMAX|4DX|ICE|MX4D|SCREENX)/i.test(
+          /^(HDR|BARCO|ATMOS|DOLBY|IMAX|4DX|ICE|MX4D|SCREENX|PXL|MACRO)/i.test(
             text
           ) &&
           el.children.length === 0
