@@ -3,13 +3,20 @@ import { db } from "@/lib/db";
 import { checkResults, trackers } from "@/lib/db/schema";
 import { getCityByName } from "@/lib/cities";
 import {
+  filterShowsForPreferences,
   normalizeTracker,
   sanitizeCinemaSelections,
+  sanitizePreferredFormats,
   sanitizePreferredTimeslots,
 } from "@/lib/preferences";
 import { desc, eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
-import type { CinemaSelection, PreferredTimeslot, ShowInfo } from "@/types";
+import type {
+  CinemaSelection,
+  PlatformName,
+  PreferredTimeslot,
+  ShowInfo,
+} from "@/types";
 
 function parseShows(rawData: string | null): ShowInfo[] {
   if (!rawData) {
@@ -52,6 +59,7 @@ export async function GET() {
 
   const trackersWithShows = await Promise.all(
     allTrackers.map(async (tracker) => {
+      const normalizedTracker = normalizeTracker(tracker);
       const latestFoundResults = await db
         .select()
         .from(checkResults)
@@ -61,11 +69,19 @@ export async function GET() {
       const latestShows = dedupeShows(
         latestFoundResults
           .filter((result) => result.found === 1)
-          .flatMap((result) => parseShows(result.rawData))
+          .flatMap((result) =>
+            filterShowsForPreferences(
+              result.platform as PlatformName,
+              parseShows(result.rawData),
+              normalizedTracker.preferredCinemas,
+              normalizedTracker.preferredTimeslots,
+              normalizedTracker.preferredFormats
+            )
+          )
       );
 
       return {
-        ...normalizeTracker(tracker),
+        ...normalizedTracker,
         latestShows,
       };
     })
@@ -85,6 +101,7 @@ export async function POST(request: NextRequest) {
       preferredDate,
       email,
       preferredCinemas,
+      preferredFormats,
       preferredTimeslots,
     } = body;
 
@@ -154,6 +171,10 @@ export async function POST(request: NextRequest) {
         : []
     );
 
+    const normalizedFormats = sanitizePreferredFormats(
+      Array.isArray(preferredFormats) ? preferredFormats : []
+    );
+
     if (normalizedTimeslots.length === 0) {
       return NextResponse.json(
         { error: "Select at least one timeslot" },
@@ -173,6 +194,7 @@ export async function POST(request: NextRequest) {
       bmsSlug: cityInfo.bmsSlug,
       districtCitySlug: cityInfo.districtSlug,
       preferredCinemas: JSON.stringify(normalizedCinemas),
+      preferredFormats: JSON.stringify(normalizedFormats),
       preferredTimeslots: JSON.stringify(normalizedTimeslots),
       lastCheckedAt: null,
       lastError: null,

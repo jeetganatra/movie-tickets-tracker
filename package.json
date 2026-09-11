@@ -7,7 +7,7 @@
     "dev:web": "next dev",
     "dev:cron": "node --import tsx scripts/start-cron.ts",
     "build": "next build",
-    "start": "concurrently \"next start\" \"node --import tsx scripts/start-cron.ts\"",
+    "start": "node --import tsx scripts/start-app.ts",
     "lint": "eslint",
     "launchd:install": "scripts/install-launchd.sh install",
     "launchd:restart": "scripts/install-launchd.sh restart",

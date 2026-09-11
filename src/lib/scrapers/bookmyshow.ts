@@ -96,7 +96,7 @@ function filterShowsForRequestedDate(
   });
 }
 
-function requestedDateToDisplayKey(date: string): string {
+export function requestedDateToDisplayKey(date: string): string {
   const parsed = new Date(`${date}T00:00:00+05:30`);
 
   return parsed
@@ -104,8 +104,10 @@ function requestedDateToDisplayKey(date: string): string {
       weekday: "short",
       day: "2-digit",
       month: "short",
+      timeZone: "Asia/Kolkata",
     })
     .toUpperCase()
+    .replace(/\bSEPT\b/g, "SEP")
     .replace(/,/g, "")
     .replace(/\s+/g, " ");
 }
@@ -116,21 +118,7 @@ function requestedDateKeyToDisplayKey(dateKey: string): string {
   );
 }
 
-function containsPreferredCinema(
-  shows: ShowInfo[],
-  preferredCinemaNames: string[]
-): boolean {
-  if (preferredCinemaNames.length === 0) {
-    return shows.length > 0;
-  }
-
-  const normalizedHints = preferredCinemaNames.map(normalizeForMatch);
-  return shows.some((show) =>
-    normalizedHints.includes(normalizeForMatch(show.theaterName))
-  );
-}
-
-function extractShowtimesFromBodyText(
+export function extractShowtimesFromBodyText(
   bodyText: string,
   bookingUrl: string
 ): ShowInfo[] {
@@ -181,7 +169,7 @@ function extractShowtimesFromBodyText(
       shows.push({
         theaterName: currentTheater,
         showtime: current,
-        format: isFormat(nextLine) ? nextLine : "2D",
+        format: isFormat(nextLine) ? nextLine : "",
         language: "",
         availabilityStatus: "Available",
         bookingUrl,
@@ -358,6 +346,7 @@ export async function checkBookMyShow(
     const results: ShowtimeResult[] = [];
     const maxCandidates = preferredCinemaNames.length > 0 ? 6 : 3;
     const triedEventIds = new Set<string>();
+    const discoveredFormats = new Map<string, BmsMovieMatch>();
 
     const tryCandidate = async (
       candidate: BmsMovieMatch
@@ -396,6 +385,11 @@ export async function checkBookMyShow(
         return blockedResult;
       }
 
+      // Capture event links before dropdown navigation changes the page.
+      for (const format of await collectFormatEventMatches(page, movieSlug, triedEventIds)) {
+        discoveredFormats.set(format.eventId, format);
+      }
+
       // Step 4: Extract showtimes
       const result = await extractShowtimes(
         page,
@@ -412,35 +406,18 @@ export async function checkBookMyShow(
         continue;
       }
 
-      const result = await tryCandidate(candidate);
-
-      if (result.found && containsPreferredCinema(result.shows, preferredCinemaNames)) {
-        return result;
-      }
+      await tryCandidate(candidate);
 
       if (preferredCinemaNames.length === 0) {
         continue;
       }
 
-      const movieSlug = candidate.slug || fallbackMovieSlug(movieName);
-      const formatCandidates = await collectFormatEventMatches(
-        page,
-        movieSlug,
-        triedEventIds
-      );
-
-      for (const formatCandidate of formatCandidates) {
+      for (const formatCandidate of discoveredFormats.values()) {
         if (triedEventIds.has(formatCandidate.eventId)) {
           continue;
         }
 
-        const formatResult = await tryCandidate(formatCandidate);
-        if (
-          formatResult.found &&
-          containsPreferredCinema(formatResult.shows, preferredCinemaNames)
-        ) {
-          return formatResult;
-        }
+        await tryCandidate(formatCandidate);
       }
     }
 
@@ -882,7 +859,7 @@ async function extractShowtimes(
           text.length >= 3 &&
           text.length <= 80 &&
           !/^\d{1,2}:\d{2}/.test(text) &&
-          !/^(HDR|BARCO|ATMOS|DOLBY|IMAX|4DX|ICE|MX4D|PXL|MACRO)/i.test(text) &&
+          !/^(HDR|BARCO|ATMOS|DOLBY|IMAX|4DX|ICE|MX4D|PCX|PXL|MACRO|2D|3D)/i.test(text) &&
           !text.includes("₹") &&
           span.children.length === 0
         ) {
@@ -903,38 +880,23 @@ async function extractShowtimes(
 
       if (!theaterName) continue;
 
-      // Find showtimes: leaf divs/spans matching time pattern
-      const times: string[] = [];
-      let format = "";
+      // Read labels only from the individual show tile, never the whole cinema.
+      const timePattern = /^\d{1,2}:\d{2}\s*(AM|PM)$/i;
+      const formatPattern = /^(HDR|BARCO|ATMOS|DOLBY|IMAX|4DX|ICE|MX4D|SCREENX|PCX|PXL|MACRO|2D|3D|4K|LASER)/i;
       theaterDiv.querySelectorAll("*").forEach((el) => {
         const text = el.textContent?.trim() || "";
-        if (
-          /^\d{1,2}:\d{2}\s*(AM|PM)$/i.test(text) &&
-          el.children.length === 0
-        ) {
-          times.push(text);
+        if (!timePattern.test(text) || el.children.length !== 0) return;
+        let format = "";
+        let tile = el.parentElement;
+        while (tile && tile !== theaterDiv) {
+          const leaves = Array.from(tile.querySelectorAll("*")).filter(node => node.children.length === 0);
+          if (leaves.filter(node => timePattern.test(node.textContent?.trim() || "")).length !== 1) break;
+          const labels = leaves.map(node => node.textContent?.trim() || "").filter(label => formatPattern.test(label));
+          if (labels.length === 1) { format = labels[0]; break; }
+          tile = tile.parentElement;
         }
-        if (
-          /^(HDR|BARCO|ATMOS|DOLBY|IMAX|4DX|ICE|MX4D|SCREENX|PXL|MACRO)/i.test(
-            text
-          ) &&
-          el.children.length === 0
-        ) {
-          format = text;
-        }
+        showList.push({ theaterName, showtime: text, format, bookingUrl });
       });
-
-      if (times.length > 0) {
-        const uniqueTimes = [...new Set(times)];
-        uniqueTimes.forEach((time) => {
-          showList.push({
-            theaterName,
-            showtime: time,
-            format: format || "2D",
-            bookingUrl,
-          });
-        });
-      }
     }
 
     return showList;
@@ -947,13 +909,9 @@ async function extractShowtimes(
   );
   let finalShows = baseShows;
 
-  if (
-    preferredCinemaNames.length > 0 &&
-    !containsPreferredCinema(baseShows, preferredCinemaNames)
-  ) {
+  if (preferredCinemaNames.length > 0) {
     const filteredShows = await retryAcrossLanguageFilters(
       page,
-      preferredCinemaNames,
       requestedDateKey
     );
 
@@ -1015,7 +973,6 @@ async function extractVisibleShows(
 
 async function retryAcrossLanguageFilters(
   page: import("playwright").Page,
-  preferredCinemaNames: string[],
   requestedDateKey: string
 ): Promise<ShowInfo[]> {
   const optionTexts = await collectLanguageFilterOptions(page, false);
@@ -1064,10 +1021,6 @@ async function retryAcrossLanguageFilters(
 
     aggregatedShows = dedupeShows([...aggregatedShows, ...visibleShows]);
 
-    if (containsPreferredCinema(visibleShows, preferredCinemaNames)) {
-      console.log(`[BMS] Preferred cinema found after selecting "${optionText}"`);
-      return aggregatedShows;
-    }
   }
 
   return aggregatedShows;

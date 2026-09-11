@@ -11,6 +11,7 @@ export const trackers = sqliteTable("trackers", {
   bmsSlug: text("bms_slug").notNull(),
   districtCitySlug: text("district_city_slug").notNull(),
   preferredCinemas: text("preferred_cinemas").notNull().default("[]"),
+  preferredFormats: text("preferred_formats").notNull().default("[]"),
   preferredTimeslots: text("preferred_timeslots").notNull().default("[]"),
   lastCheckedAt: text("last_checked_at"),
   lastError: text("last_error"),

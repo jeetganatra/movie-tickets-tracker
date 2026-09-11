@@ -23,14 +23,22 @@ export async function sendEmail(
   try {
     const transport = getTransporter();
 
-    await transport.sendMail({
+    const info = await transport.sendMail({
       from: `"MovieTracker" <${process.env.GMAIL_USER}>`,
       to,
       subject,
       html,
     });
 
-    console.log(`[Email] Sent to ${to}: ${subject}`);
+    const messageId =
+      typeof info === "object" &&
+      info !== null &&
+      "messageId" in info &&
+      typeof info.messageId === "string"
+        ? ` messageId=${info.messageId}`
+        : "";
+
+    console.log(`[Email] Sent to ${to}: ${subject}${messageId}`);
     return true;
   } catch (error) {
     console.error(

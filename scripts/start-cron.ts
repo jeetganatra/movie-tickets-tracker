@@ -34,12 +34,46 @@ const REQUEST_TIMEOUT_MS =
   Number.isFinite(parsedRequestTimeoutMs) && parsedRequestTimeoutMs > 0
     ? parsedRequestTimeoutMs
     : 240000;
+const parsedMaxConsecutiveFailures = Number(
+  process.env.CRON_MAX_CONSECUTIVE_FAILURES || "3"
+);
+const MAX_CONSECUTIVE_FAILURES =
+  Number.isFinite(parsedMaxConsecutiveFailures) &&
+  parsedMaxConsecutiveFailures > 0
+    ? parsedMaxConsecutiveFailures
+    : 3;
 let isRunning = false;
+let consecutiveApiFailures = 0;
 
 console.log(`[Cron] Starting scheduler - checking every ${INTERVAL} minutes`);
 console.log(`[Cron] App URL: ${APP_URL}`);
 console.log(`[Cron] Secret configured: ${CRON_SECRET ? "yes" : "no"}`);
 console.log(`[Cron] Request timeout: ${REQUEST_TIMEOUT_MS}ms`);
+console.log(`[Cron] Max consecutive API failures: ${MAX_CONSECUTIVE_FAILURES}`);
+
+function resetApiFailures() {
+  if (consecutiveApiFailures > 0) {
+    console.log(
+      `[Cron] API recovered after ${consecutiveApiFailures} failed attempt(s)`
+    );
+  }
+
+  consecutiveApiFailures = 0;
+}
+
+function recordApiFailure(reason: string) {
+  consecutiveApiFailures += 1;
+  console.error(
+    `[Cron] API failure ${consecutiveApiFailures}/${MAX_CONSECUTIVE_FAILURES}: ${reason}`
+  );
+
+  if (consecutiveApiFailures >= MAX_CONSECUTIVE_FAILURES) {
+    console.error(
+      "[Cron] Too many consecutive API failures; exiting so the service supervisor can restart"
+    );
+    process.exit(1);
+  }
+}
 
 // Run every N minutes
 cron.schedule(`*/${INTERVAL} * * * *`, async () => {
@@ -71,6 +105,7 @@ cron.schedule(`*/${INTERVAL} * * * *`, async () => {
       return;
     }
 
+    resetApiFailures();
     const data = await response.json();
     console.log(`[Cron] ${timestamp} - ${data.message}`);
 
@@ -88,8 +123,10 @@ cron.schedule(`*/${INTERVAL} * * * *`, async () => {
       console.error(
         `[Cron] ${timestamp} - API call timed out after ${REQUEST_TIMEOUT_MS}ms`
       );
+      recordApiFailure(`timeout after ${REQUEST_TIMEOUT_MS}ms`);
     } else {
       console.error(`[Cron] Failed to call API:`, error);
+      recordApiFailure(error instanceof Error ? error.message : String(error));
     }
   } finally {
     clearTimeout(timeout);

@@ -29,6 +29,7 @@ sqlite.exec(`
     bms_slug TEXT NOT NULL,
     district_city_slug TEXT NOT NULL,
     preferred_cinemas TEXT NOT NULL DEFAULT '[]',
+    preferred_formats TEXT NOT NULL DEFAULT '[]',
     preferred_timeslots TEXT NOT NULL DEFAULT '[]',
     last_checked_at TEXT,
     last_error TEXT,
@@ -63,6 +64,7 @@ function ensureTrackerColumn(name: string, definition: string) {
 
 ensureTrackerColumn("bms_slug", "TEXT NOT NULL DEFAULT ''");
 ensureTrackerColumn("preferred_cinemas", "TEXT NOT NULL DEFAULT '[]'");
+ensureTrackerColumn("preferred_formats", "TEXT NOT NULL DEFAULT '[]'");
 ensureTrackerColumn("preferred_timeslots", "TEXT NOT NULL DEFAULT '[]'");
 
 export const db = drizzle(sqlite, { schema });

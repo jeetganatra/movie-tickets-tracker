@@ -19,6 +19,14 @@ export const TIMESLOT_OPTIONS: {
   { value: "night", label: "Night", description: "9 PM to 5:59 AM" },
 ];
 
+export const FORMAT_OPTIONS = [
+  {
+    value: "DOLBY CINEMA",
+    label: "Dolby Cinema",
+    description: "Only the dedicated Dolby Cinema auditorium",
+  },
+] as const;
+
 function safeParseJson<T>(value: string | null | undefined, fallback: T): T {
   if (!value) {
     return fallback;
@@ -83,6 +91,24 @@ export function sanitizePreferredTimeslots(
   return [...new Set(timeslots)].filter((timeslot) => valid.has(timeslot));
 }
 
+export function sanitizePreferredFormats(formats: string[]): string[] {
+  const seen = new Set<string>();
+
+  return formats
+    .filter((format): format is string => typeof format === "string")
+    .map((format) => normalizeWhitespace(format).toUpperCase())
+    .filter((format) => {
+      const normalized = normalizeFormatName(format);
+
+      if (!normalized || seen.has(normalized)) {
+        return false;
+      }
+
+      seen.add(normalized);
+      return true;
+    });
+}
+
 function parsePreferredCinemas(value: string | null | undefined): CinemaSelection[] {
   const parsed = safeParseJson<CinemaSelection[]>(value, []);
   return sanitizeCinemaSelections(
@@ -101,6 +127,12 @@ function parsePreferredTimeslots(
   );
 }
 
+function parsePreferredFormats(
+  value: string | null | undefined
+): string[] {
+  return sanitizePreferredFormats(safeParseJson<string[]>(value, []));
+}
+
 type TrackerRowLike = {
   id: string;
   movieName: string;
@@ -112,6 +144,7 @@ type TrackerRowLike = {
   bmsSlug?: string | null;
   districtCitySlug: string;
   preferredCinemas?: string | null;
+  preferredFormats?: string | null;
   preferredTimeslots?: string | null;
   lastCheckedAt: string | null;
   lastError: string | null;
@@ -134,6 +167,7 @@ export function normalizeTracker(row: TrackerRowLike): Tracker {
     status,
     bmsSlug: row.bmsSlug || cityInfo?.bmsSlug || row.bmsRegionCode.toLowerCase(),
     preferredCinemas: parsePreferredCinemas(row.preferredCinemas),
+    preferredFormats: parsePreferredFormats(row.preferredFormats),
     preferredTimeslots: parsePreferredTimeslots(row.preferredTimeslots),
   };
 }
@@ -202,29 +236,59 @@ function matchesTimeslotPreference(
   return timeslot ? preferredTimeslots.includes(timeslot) : false;
 }
 
+export function normalizeFormatName(value: string): string {
+  return normalizeWhitespace(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, "");
+}
+
+function matchesFormatPreference(
+  show: ShowInfo,
+  preferredFormats: string[]
+): boolean {
+  if (preferredFormats.length === 0) {
+    return true;
+  }
+
+  const showFormat = normalizeFormatName(show.format);
+  return preferredFormats.some(
+    (format) => {
+      const preference = normalizeFormatName(format);
+      if (preference === showFormat) return true;
+      // A family selection accepts dimensional variants, but not Atmos-only shows.
+      return ["dolby cinema", "pcx"].includes(preference) &&
+        [ `${preference} 2d`, `${preference} 3d`, `2d ${preference}`, `3d ${preference}` ].includes(showFormat);
+    }
+  );
+}
+
 export function filterShowsForPreferences(
   platform: PlatformName,
   shows: ShowInfo[],
   preferredCinemas: CinemaSelection[],
-  preferredTimeslots: PreferredTimeslot[]
+  preferredTimeslots: PreferredTimeslot[],
+  preferredFormats: string[]
 ): ShowInfo[] {
   return shows.filter(
     (show) =>
       matchesCinemaPreference(show, platform, preferredCinemas) &&
-      matchesTimeslotPreference(show, preferredTimeslots)
+      matchesTimeslotPreference(show, preferredTimeslots) &&
+      matchesFormatPreference(show, preferredFormats)
   );
 }
 
 export function applyPreferencesToResult(
   result: ShowtimeResult,
   preferredCinemas: CinemaSelection[],
-  preferredTimeslots: PreferredTimeslot[]
+  preferredTimeslots: PreferredTimeslot[],
+  preferredFormats: string[]
 ): ShowtimeResult {
   const filteredShows = filterShowsForPreferences(
     result.platform,
     result.shows,
     preferredCinemas,
-    preferredTimeslots
+    preferredTimeslots,
+    preferredFormats
   );
 
   return {

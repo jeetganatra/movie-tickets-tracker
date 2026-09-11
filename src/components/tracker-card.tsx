@@ -22,6 +22,7 @@ import {
   CalendarDays,
   Mail,
   Building2,
+  BadgeCheck,
   RefreshCw,
   Pause,
   Play,
@@ -265,6 +266,29 @@ export function TrackerCard({ tracker, onUpdate, index }: TrackerCardProps) {
                     ) : (
                       <span className="rounded-full border border-border/50 bg-background/40 px-2.5 py-1 text-[11px] text-muted-foreground">
                         Any cinema
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="mb-2 inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.25em] text-muted-foreground/60">
+                    <BadgeCheck className="h-3.5 w-3.5" />
+                    Show Format
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {tracker.preferredFormats.length > 0 ? (
+                      tracker.preferredFormats.map((format) => (
+                        <span
+                          key={format}
+                          className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-[11px] text-sky-100"
+                        >
+                          {format}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="rounded-full border border-border/50 bg-background/40 px-2.5 py-1 text-[11px] text-muted-foreground">
+                        Any format
                       </span>
                     )}
                   </div>

@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { TIMESLOT_OPTIONS } from "@/lib/preferences";
+import { FORMAT_OPTIONS, TIMESLOT_OPTIONS } from "@/lib/preferences";
 import {
   Clapperboard,
   MapPin,
@@ -21,6 +21,7 @@ import {
   Mail,
   Loader2,
   Building2,
+  BadgeCheck,
   Clock3,
   Sparkles,
 } from "lucide-react";
@@ -66,6 +67,7 @@ export function TrackerForm({ onCreated }: TrackerFormProps) {
   const [email, setEmail] = useState("");
   const [cinemas, setCinemas] = useState<CinemaSelection[]>([]);
   const [selectedCinemaIds, setSelectedCinemaIds] = useState<string[]>([]);
+  const [preferredFormats, setPreferredFormats] = useState<string[]>([]);
   const [preferredTimeslots, setPreferredTimeslots] =
     useState<PreferredTimeslot[]>(DEFAULT_TIMESLOTS);
   const [cinemaRequestKey, setCinemaRequestKey] = useState(0);
@@ -168,6 +170,10 @@ export function TrackerForm({ onCreated }: TrackerFormProps) {
     );
   }
 
+  function selectFormat(format?: string) {
+    setPreferredFormats(format ? [format] : []);
+  }
+
   function validate() {
     const newErrors: Record<string, string> = {};
 
@@ -203,6 +209,7 @@ export function TrackerForm({ onCreated }: TrackerFormProps) {
           preferredDate,
           email: email.trim(),
           preferredCinemas: selectedCinemas,
+          preferredFormats,
           preferredTimeslots,
         }),
       });
@@ -223,6 +230,7 @@ export function TrackerForm({ onCreated }: TrackerFormProps) {
       setEmail("");
       setCinemas([]);
       setSelectedCinemaIds([]);
+      setPreferredFormats([]);
       setPreferredTimeslots(DEFAULT_TIMESLOTS);
       setCinemaErrors([]);
       setErrors({});
@@ -327,6 +335,61 @@ export function TrackerForm({ onCreated }: TrackerFormProps) {
                   {errors.preferredDate}
                 </p>
               )}
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-2xl border border-border/50 bg-black/10 p-4">
+            <div>
+              <Label className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
+                <BadgeCheck className="h-3.5 w-3.5" />
+                Show Format
+              </Label>
+              <p className="mt-1 text-sm text-muted-foreground/80">
+                Match a dedicated auditorium category, or accept any format.
+              </p>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => selectFormat()}
+                className={cn(
+                  "rounded-xl border px-4 py-3 text-left transition-all",
+                  preferredFormats.length === 0
+                    ? "border-amber-500/40 bg-amber-500/12 text-amber-50 shadow-[0_8px_24px_rgba(245,158,11,0.12)]"
+                    : "border-border/50 bg-background/40 text-muted-foreground hover:border-amber-500/20 hover:bg-amber-500/6"
+                )}
+              >
+                <span className="block text-sm font-semibold">Any format</span>
+                <span className="mt-1 block text-xs text-muted-foreground/80">
+                  Alert for every auditorium category
+                </span>
+              </button>
+
+              {FORMAT_OPTIONS.map((option) => {
+                const selected = preferredFormats.includes(option.value);
+
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => selectFormat(option.value)}
+                    className={cn(
+                      "rounded-xl border px-4 py-3 text-left transition-all",
+                      selected
+                        ? "border-amber-500/40 bg-amber-500/12 text-amber-50 shadow-[0_8px_24px_rgba(245,158,11,0.12)]"
+                        : "border-border/50 bg-background/40 text-muted-foreground hover:border-amber-500/20 hover:bg-amber-500/6"
+                    )}
+                  >
+                    <span className="block text-sm font-semibold">
+                      {option.label}
+                    </span>
+                    <span className="mt-1 block text-xs text-muted-foreground/80">
+                      {option.description}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
