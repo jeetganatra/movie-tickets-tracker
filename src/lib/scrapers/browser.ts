@@ -2,6 +2,8 @@ import { chromium, Browser, BrowserContext } from "playwright";
 
 let browserInstance: Browser | null = null;
 let stealthBrowserInstance: Browser | null = null;
+let browserLaunch: Promise<Browser> | null = null;
+let stealthLaunch: Promise<Browser> | null = null;
 
 const USER_AGENTS = [
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -16,6 +18,11 @@ export function getRandomUserAgent(): string {
 }
 
 export async function getBrowser(): Promise<Browser> {
+  browserLaunch ??= launchBrowser().finally(() => { browserLaunch = null; });
+  return browserLaunch;
+}
+
+async function launchBrowser(): Promise<Browser> {
   if (!browserInstance || !browserInstance.isConnected()) {
     browserInstance = await chromium.launch({
       headless: true,
@@ -37,6 +44,11 @@ export async function getBrowser(): Promise<Browser> {
  * with stealth args if system Chrome is not available.
  */
 async function getStealthBrowser(): Promise<Browser> {
+  stealthLaunch ??= launchStealthBrowser().finally(() => { stealthLaunch = null; });
+  return stealthLaunch;
+}
+
+async function launchStealthBrowser(): Promise<Browser> {
   if (!stealthBrowserInstance || !stealthBrowserInstance.isConnected()) {
     try {
       stealthBrowserInstance = await chromium.launch({
@@ -111,10 +123,11 @@ export async function createStealthContext(): Promise<BrowserContext> {
 }
 
 export async function closeBrowser(): Promise<void> {
-  if (browserInstance) {
-    await browserInstance.close();
-    browserInstance = null;
-  }
+  await Promise.allSettled([browserLaunch, stealthLaunch]);
+  const browsers = [browserInstance, stealthBrowserInstance];
+  browserInstance = null;
+  stealthBrowserInstance = null;
+  await Promise.allSettled(browsers.map((browser) => browser?.close()));
 }
 
 export function delay(ms: number): Promise<void> {

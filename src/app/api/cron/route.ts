@@ -5,8 +5,9 @@ import { asc, eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { sendEmail } from "@/lib/email/sender";
 import { buildTicketFoundEmail } from "@/lib/email/templates";
-import { delay } from "@/lib/scrapers/browser";
+import { setTimeout as delay } from "node:timers/promises";
 import { runTrackerCheck } from "@/lib/tracker-check";
+import { withCheckLock } from "@/lib/check-lock";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -20,6 +21,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  return withCheckLock(() => check(request));
+}
+
+async function check(request: NextRequest) {
   try {
     // Get all active trackers
     const activeTrackers = await db
@@ -42,6 +47,7 @@ export async function GET(request: NextRequest) {
 
     // Process the stalest trackers first (max 20 per cycle)
     for (const t of activeTrackers) {
+      if (request.signal.aborted) break;
       // Check if date has passed
       const preferredDate = new Date(t.preferredDate + "T23:59:59");
       if (preferredDate < new Date()) {
@@ -62,7 +68,7 @@ export async function GET(request: NextRequest) {
       try {
         // Run both scrapers in parallel
         const { tracker: normalizedTracker, bmsResult, districtResult } =
-          await runTrackerCheck(t);
+          await runTrackerCheck(t, request.signal);
 
         const now = new Date().toISOString();
 

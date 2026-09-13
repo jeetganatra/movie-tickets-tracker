@@ -153,6 +153,8 @@ npm run launchd:install
 
 This builds the app, installs a user LaunchAgent, and keeps the same web UI available at [http://localhost:3000](http://localhost:3000). See [docs/launchd.md](docs/launchd.md) for status, restart, stop, and log commands.
 
+Ticket checks run in disposable Node workers, keeping scraper allocations out of the web server. Each worker has a 512 MB V8 heap limit and a 180-second deadline, closes both browser types, and exits after its check. Browser memory is separate from the V8 heap limit. Manual and scheduled checks share a single-process lock; overlapping requests return HTTP 409. Disconnected requests cancel their worker. Exact cinema selections skip providers that cannot match them. `npm run build` also compiles the worker into `.worker/`; keep that directory alongside `.next/` in production. After editing scraper code during development, run `npm run build:worker` again. These changes do not alter saved trackers.
+
 ---
 
 ## How to Use

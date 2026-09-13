@@ -6,8 +6,13 @@ import { v4 as uuidv4 } from "uuid";
 import { sendEmail } from "@/lib/email/sender";
 import { buildTicketFoundEmail } from "@/lib/email/templates";
 import { runTrackerCheck } from "@/lib/tracker-check";
+import { withCheckLock } from "@/lib/check-lock";
 
 export async function POST(request: NextRequest) {
+  return withCheckLock(() => check(request));
+}
+
+async function check(request: NextRequest) {
   try {
     const body = await request.json();
     const { trackerId } = body;
@@ -51,7 +56,7 @@ export async function POST(request: NextRequest) {
 
     // Run both scrapers in parallel
     const { tracker: normalizedTracker, bmsResult, districtResult } =
-      await runTrackerCheck(t);
+      await runTrackerCheck(t, request.signal);
 
     const now = new Date().toISOString();
 
